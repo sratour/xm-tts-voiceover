@@ -4,8 +4,8 @@ An [Agent Skill](https://code.claude.com/docs/en/skills) that turns text into **
 
 Three pluggable backends: Microsoft Edge neural voices (default — free, no API key), any **OpenAI-compatible** `/v1/audio/speech` endpoint, or your **operating system's** own engine for fully offline use.
 
-[![CI](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml)
-[![Service health](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml)
+[![CI](https://github.com/sratour/tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/sratour/tts-voiceover/actions/workflows/ci.yml)
+[![Service health](https://github.com/sratour/tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/sratour/tts-voiceover/actions/workflows/health.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [中文说明](README.zh-CN.md)
@@ -127,7 +127,7 @@ Clone into the directory your agent scans for skills.
 **WorkBuddy AI**
 
 ```bash
-git clone https://github.com/<your-username>/tts-voiceover.git ~/.workbuddy-ai/skills/tts-voiceover
+git clone https://github.com/sratour/tts-voiceover.git ~/.workbuddy-ai/skills/tts-voiceover
 ```
 
 On Windows, that path is `%USERPROFILE%\.workbuddy-ai\skills\tts-voiceover`.
@@ -135,7 +135,7 @@ On Windows, that path is `%USERPROFILE%\.workbuddy-ai\skills\tts-voiceover`.
 **Claude Code**
 
 ```bash
-git clone https://github.com/<your-username>/tts-voiceover.git ~/.claude/skills/tts-voiceover
+git clone https://github.com/sratour/tts-voiceover.git ~/.claude/skills/tts-voiceover
 ```
 
 **Other agents** — clone into whatever skills directory your host uses. The only requirement is that the host reads `SKILL.md` frontmatter.

@@ -4,8 +4,8 @@
 
 **三种后端，`--provider` 切换**：微软 Edge 神经语音（默认，免费、无需 Key）、任意 **OpenAI 兼容**接口、或**操作系统自带**引擎（完全离线）。
 
-[![CI](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml)
-[![服务健康](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml)
+[![CI](https://github.com/sratour/tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/sratour/tts-voiceover/actions/workflows/ci.yml)
+[![服务健康](https://github.com/sratour/tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/sratour/tts-voiceover/actions/workflows/health.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [English](README.md)
@@ -117,7 +117,7 @@ python3 scripts/tts.py say --provider system --text "完全离线合成。" --ou
 **WorkBuddy AI**
 
 ```bash
-git clone https://github.com/<your-username>/tts-voiceover.git ~/.workbuddy-ai/skills/tts-voiceover
+git clone https://github.com/sratour/tts-voiceover.git ~/.workbuddy-ai/skills/tts-voiceover
 ```
 
 Windows 下对应路径为 `%USERPROFILE%\.workbuddy-ai\skills\tts-voiceover`。
@@ -125,7 +125,7 @@ Windows 下对应路径为 `%USERPROFILE%\.workbuddy-ai\skills\tts-voiceover`。
 **Claude Code**
 
 ```bash
-git clone https://github.com/<your-username>/tts-voiceover.git ~/.claude/skills/tts-voiceover
+git clone https://github.com/sratour/tts-voiceover.git ~/.claude/skills/tts-voiceover
 ```
 
 **其他 agent** —— 克隆到你所用宿主读取 skill 的目录即可，唯一要求是宿主能解析 `SKILL.md` 的 frontmatter。
