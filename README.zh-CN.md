@@ -4,6 +4,10 @@
 
 免 API Key、免注册。300+ 神经语音，覆盖 140+ 语言/地区。
 
+[![CI](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml)
+[![服务健康](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 [English](README.md)
 
 ---
@@ -135,9 +139,31 @@ zh-CN-XiaoxiaoNeural
 
 完整的中文音色表（14 个）和语言前缀表见 [`SKILL.md`](SKILL.md)。
 
+## 测试与 CI
+
+这里的测试是**真实联网冒烟测试**，不是打桩的单元测试。因为本项目依赖的是一个非官方接口，
+打桩测试只能证明「桩写得对」，永远发现不了服务本身变了。`tests/smoke_test.py` 直接调真实服务，
+端到端校验 11 项：CLI 各命令、真实音频产出、词级对齐字幕、批量模式、合并停顿行为，
+以及合并字幕时间轴是否仍与合并音频一致。
+
+自己跑：
+
+```bash
+python tests/smoke_test.py
+```
+
+配套两个 workflow：
+
+| Workflow | 触发 | 作用 |
+|---|---|---|
+| [`ci.yml`](.github/workflows/ci.yml) | push、PR、手动 | 在 Ubuntu（Python 3.9 / 3.12 / 3.13）、Windows、macOS 上跑冒烟测试 |
+| [`health.yml`](.github/workflows/health.yml) | 每天 09:00（北京时间）、手动 | 探测线上接口，挂了就**自动开 GitHub Issue**，恢复了自动关闭 |
+
+每日探针是更关键的那个。接口随时可能消失，它把「用户来报障」变成「几小时前已经自动建单」。
+
 ## 依赖
 
-- **Python 3.8+**
+- **Python 3.9+**
 - **`edge-tts`** —— 必需。首次运行自动安装；想自己管理依赖就执行 `pip install -r requirements.txt` 并设置 `TTS_NO_AUTO_INSTALL=1`。
 - **`ffmpeg`** —— 可选，仅 `batch --merge` 需要。缺失时退化为 MP3 帧拼接。
 

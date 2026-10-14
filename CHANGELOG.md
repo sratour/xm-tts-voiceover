@@ -20,6 +20,17 @@ First public release.
 - `--proxy` support for restricted networks.
 - Combined `all.srt` output whose timeline matches the merged audio exactly.
 - `TTS_NO_AUTO_INSTALL` environment variable to disable automatic dependency installation.
+- `tests/smoke_test.py` — live end-to-end smoke test covering 11 checks across the CLI,
+  real synthesis, subtitles, batch, and merge behaviour.
+- GitHub Actions: `ci.yml` runs the smoke test on Ubuntu / Windows / macOS across
+  Python 3.9, 3.12 and 3.13; `health.yml` probes the live endpoint daily and files a
+  GitHub issue automatically when it breaks.
+
+### Fixed
+
+- Chinese CLI output raised `UnicodeEncodeError` when stdout was piped on Windows,
+  because the console code page was used instead of UTF-8. stdout/stderr are now
+  explicitly reconfigured to UTF-8.
 
 ### Notes
 

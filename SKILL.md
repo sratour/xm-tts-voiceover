@@ -24,7 +24,7 @@ allowed-tools:
 <SKILL_DIR>/scripts/tts.py
 ```
 
-用当前环境的 `python` 或 `python3` 调用即可（需 Python 3.8+）：
+用当前环境的 `python` 或 `python3` 调用即可（需 Python 3.9+）：
 
 ```bash
 python3 "<SKILL_DIR>/scripts/tts.py" <命令> [参数]
@@ -188,7 +188,7 @@ python tts.py voices             # 全部 322 个
 
 ## 依赖与非官方接口声明
 
-- 必需：Python 3.8+、`edge-tts`（首次运行自动安装，可用 `TTS_NO_AUTO_INSTALL=1` 关闭）。
+- 必需：Python 3.9+、`edge-tts`（首次运行自动安装，可用 `TTS_NO_AUTO_INSTALL=1` 关闭）。
 - 可选：`ffmpeg`（仅 `batch --merge` 用；缺失时退化为 MP3 帧拼接）。
 
 > **本 skill 依赖的 `edge-tts` 走的是微软 Edge 浏览器「大声朗读」的内部接口，

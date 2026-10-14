@@ -23,6 +23,15 @@ import sys
 
 __version__ = "1.0.0"
 
+# The CLI prints Chinese text. On Windows, stdout/stderr default to the console
+# code page (cp936/cp1252) when piped, which raises UnicodeEncodeError. Force
+# UTF-8 so output is identical on every platform and in CI logs.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, OSError):
+        pass
+
 # ---------------------------------------------------------------- dependencies
 def _ensure_deps():
     try:
@@ -264,10 +273,10 @@ def cmd_doctor(args):
     problems = []
 
     v = sys.version_info
-    if v >= (3, 8):
+    if v >= (3, 9):
         print("[ok]   Python %d.%d.%d" % (v.major, v.minor, v.micro))
     else:
-        print("[FAIL] Python %d.%d.%d  —— 需要 3.8 或更高" % (v.major, v.minor, v.micro))
+        print("[FAIL] Python %d.%d.%d  —— 需要 3.9 或更高" % (v.major, v.minor, v.micro))
         problems.append("Python 版本过低")
     print("       解释器: %s" % sys.executable)
 

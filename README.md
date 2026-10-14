@@ -4,6 +4,10 @@ An [Agent Skill](https://code.claude.com/docs/en/skills) that turns text into **
 
 No API key. No signup. 300+ neural voices across 140+ locales.
 
+[![CI](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml)
+[![Service health](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 [中文说明](README.zh-CN.md)
 
 ---
@@ -140,9 +144,34 @@ Two gotchas worth knowing:
 
 See [`SKILL.md`](SKILL.md) for the full 14-voice Chinese table and language prefix list.
 
+## Testing and CI
+
+The test is a **live smoke test**, not a mocked unit suite. Because this project
+depends on an undocumented endpoint, a mocked test would only prove that the mocks
+match — it could never tell you the service changed. `tests/smoke_test.py` calls the
+real service and checks 11 things end to end: the CLI surface, actual audio output,
+word-aligned subtitles, batch mode, the merge/silence behaviour, and that the combined
+subtitle timeline still matches the merged audio.
+
+Run it yourself:
+
+```bash
+python tests/smoke_test.py
+```
+
+Two workflows back this up:
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| [`ci.yml`](.github/workflows/ci.yml) | push, PR, manual | Runs the smoke test on Ubuntu (Python 3.9 / 3.12 / 3.13), Windows, and macOS |
+| [`health.yml`](.github/workflows/health.yml) | daily at 09:00 CST, manual | Probes the live endpoint; **opens a GitHub issue automatically** if it breaks, and closes it again once the service recovers |
+
+The daily probe is the important one. Since the endpoint can vanish without warning,
+this turns "a user reports it's broken" into "an issue was filed hours earlier".
+
 ## Requirements
 
-- **Python 3.8+**
+- **Python 3.9+**
 - **`edge-tts`** — required. Installed automatically on first run; to manage it yourself, run `pip install -r requirements.txt` and set `TTS_NO_AUTO_INSTALL=1`.
 - **`ffmpeg`** — optional, only for `batch --merge`. Without it the merge falls back to raw MP3 frame concatenation.
 

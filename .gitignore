@@ -13,6 +13,9 @@ env/
 *.list.txt
 outputs/
 
+# CI scratch
+diagnostics.md
+
 # keep any checked-in examples
 !examples/**/*.mp3
 !examples/**/*.srt
