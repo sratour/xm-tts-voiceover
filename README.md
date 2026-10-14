@@ -2,7 +2,7 @@
 
 An [Agent Skill](https://code.claude.com/docs/en/skills) that turns text into **mp3 voiceover with time-aligned SRT subtitles** — for AI agents that support the `SKILL.md` convention.
 
-No API key. No signup. 300+ neural voices across 140+ locales.
+Three pluggable backends: Microsoft Edge neural voices (default — free, no API key), any **OpenAI-compatible** `/v1/audio/speech` endpoint, or your **operating system's** own engine for fully offline use.
 
 [![CI](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml)
 [![Service health](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml)
@@ -37,18 +37,88 @@ This project is a convenience wrapper. It grants you no rights over Microsoft's 
 | `say` | Synthesize one block of text into an mp3 (optionally with `.srt`) |
 | `batch` | Synthesize many segments, optionally merging them and exporting one combined `.srt` |
 | `voices` | List available voices, filterable by language |
-| `styles` | List built-in Chinese voice aliases |
+| `styles` | List the active backend's voice aliases |
+| `providers` | List every backend and whether it is usable |
 | `doctor` | Environment self-check for troubleshooting |
+
+## Backends
+
+Pick one with `--provider`, or set `TTS_PROVIDER`. Default is `edge`.
+
+| Backend | Cost | Key | Offline | Subtitles | Covers |
+|---|---|---|---|---|---|
+| `edge` *(default)* | Free | — | No | ✅ word-level | 300+ voices, 140+ locales |
+| `openai` | Varies | Required | Varies | ❌ | OpenAI, LocalAI, Fish Speech, Kokoro-FastAPI, GPT-SoVITS, cloud vendors, … |
+| `system` | Free | — | **Yes** | ❌ | Windows SAPI, macOS `say`, Linux espeak-ng |
+
+```bash
+python3 scripts/tts.py providers   # what's available on this machine?
+```
+
+### `edge` — the default
+
+No key, no signup, and the only backend that reports word-level timings, which is
+what makes precisely aligned subtitles possible. It is also the one with the
+disclaimer above attached to it.
+
+### `openai` — bring your own endpoint
+
+`POST /v1/audio/speech` has become the de-facto interface for TTS services, so one
+adapter covers a lot of ground. Point `--base-url` at your service and it works:
+
+```bash
+# OpenAI itself
+export OPENAI_API_KEY=sk-...
+python3 scripts/tts.py say --provider openai --voice nova --text "Hello" --out out.mp3
+
+# A self-hosted server (e.g. Kokoro-FastAPI)
+python3 scripts/tts.py say --provider openai \
+  --base-url http://127.0.0.1:8880/v1 --api-key not-needed \
+  --voice af_bella --text "Hello" --out out.mp3
+```
+
+| Flag | Environment | Default |
+|---|---|---|
+| `--api-key` | `OPENAI_API_KEY` / `TTS_API_KEY` | — (required) |
+| `--base-url` | `OPENAI_BASE_URL` / `TTS_BASE_URL` | `https://api.openai.com/v1` |
+| `--model` | `TTS_MODEL` | `tts-1` |
+
+Keys are read from flags and environment only — never written to disk. Voice names
+are server-specific: run `voices --provider openai` to see what yours advertises
+(it queries `GET /audio/voices`, falling back to OpenAI's built-in list). The
+`--style` aliases only make sense against OpenAI's own voice set.
+
+### `system` — fully offline
+
+```bash
+python3 scripts/tts.py say --provider system --text "Fully offline." --out out.mp3
+```
+
+No key, no network, nothing leaves the machine. The trade-offs are real: quality
+sits well below the neural options, and **ffmpeg is required** because all three
+engines emit WAV/AIFF. `--rate` is mapped onto each engine's native unit
+(approximately); `--volume` and `--pitch` are not supported.
+
+### About subtitles
+
+`--srt` is only available on backends that report word timings — currently just
+`edge`. The others return a single opaque audio blob with no positional data, so
+asking for subtitles there fails loudly rather than inventing a timeline that
+would drift out of sync. Forced alignment (re-transcribing the audio with Whisper)
+would be needed to do better, which is a different order of work.
 
 ## Features
 
-- **Free, no API key, no account.** Uses Microsoft Edge neural voices.
-- **Time-aligned subtitles.** SRT cues come from the engine's real word-boundary events, not estimated — they stay in sync with the audio.
-- **Batch with per-segment voices.** Give each line its own voice/rate for dialogue or multi-character scripts.
-- **Merge with real pauses.** `--merge` inserts actual silence between segments and keeps the combined SRT on the same timeline.
+- **Three backends, one CLI.** Free Edge voices by default; plug in your own
+  endpoint or go fully offline without changing anything else.
+- **Time-aligned subtitles** on the Edge backend. SRT cues come from the engine's
+  real word-boundary events, not estimates.
+- **Batch with per-segment voices.** Give each line its own voice/rate for dialogue
+  or multi-character scripts.
+- **Merge with real pauses.** `--merge` inserts actual silence between segments and
+  keeps the combined SRT on the same timeline.
 - **Rate / volume / pitch control** via relative values (`+25%`, `-10Hz`).
-- **~320 voices, ~140 locales.** Mandarin, Cantonese, Taiwanese, English, Japanese, Korean, and many more — plus multilingual voices that switch language mid-sentence.
-- **Portable.** Pure Python + optional `ffmpeg`. Runs on Windows, macOS, and Linux.
+- **Portable.** Pure Python + optional `ffmpeg`. Windows, macOS, and Linux.
 
 ## Install
 
@@ -122,7 +192,7 @@ A plain text file, one segment per line, **or** JSON for per-segment control:
 | `--merge` / `--gap` | `batch` | Merge into one mp3; seconds of silence between segments (default `0.3`) |
 | `--proxy` | all | HTTP proxy, e.g. `http://127.0.0.1:7890` |
 
-## Choosing a language and voice
+## Choosing a language and voice (Edge backend)
 
 **There is no separate "language" parameter — the voice you pick decides the language.**
 `--lang` exists only on `voices`, to filter the list.
@@ -137,6 +207,9 @@ zh-CN-XiaoxiaoNeural
   └── language + region  ← change this to change language
 ```
 
+The other backends name their voices differently (`nova` on OpenAI, OS-specific
+names on `system`). Run `voices --provider <name>` to see what is available.
+
 Two gotchas worth knowing:
 
 1. **Mixed Chinese + English requires a multilingual voice** (`en-US-AvaMultilingualNeural`, `en-US-AndrewMultilingualNeural`, …). Feeding Chinese text to a single-language voice like `en-US-AriaNeural` returns **empty audio** — a service behavior, not a bug in this script.
@@ -146,12 +219,18 @@ See [`SKILL.md`](SKILL.md) for the full 14-voice Chinese table and language pref
 
 ## Testing and CI
 
-The test is a **live smoke test**, not a mocked unit suite. Because this project
-depends on an undocumented endpoint, a mocked test would only prove that the mocks
-match — it could never tell you the service changed. `tests/smoke_test.py` calls the
-real service and checks 11 things end to end: the CLI surface, actual audio output,
-word-aligned subtitles, batch mode, the merge/silence behaviour, and that the combined
-subtitle timeline still matches the merged audio.
+The test is a **live smoke test**, not a mocked unit suite. Because the default
+backend depends on an undocumented endpoint, a mocked test would only prove that
+the mocks match — it could never tell you the service changed. `tests/smoke_test.py`
+runs 21 checks end to end:
+
+- the CLI surface and the backend registry
+- **real synthesis** through the Edge backend, plus word-aligned subtitles
+- batch mode, merge with silence, and combined-SRT alignment
+- the **OpenAI-compatible backend against a local mock server** (`tests/mock_openai.py`),
+  so the HTTP plumbing, error propagation, and the `--srt` refusal are covered
+  without needing a real API key
+- the **OS-native backend** for real on whichever platform the test runs on
 
 Run it yourself:
 
@@ -172,25 +251,34 @@ this turns "a user reports it's broken" into "an issue was filed hours earlier".
 ## Requirements
 
 - **Python 3.9+**
-- **`edge-tts`** — required. Installed automatically on first run; to manage it yourself, run `pip install -r requirements.txt` and set `TTS_NO_AUTO_INSTALL=1`.
-- **`ffmpeg`** — optional, only for `batch --merge`. Without it the merge falls back to raw MP3 frame concatenation.
+- **`edge-tts`** — only for the `edge` backend. Installed automatically the first
+  time that backend runs; to manage it yourself, run `pip install -r requirements.txt`
+  and set `TTS_NO_AUTO_INSTALL=1`. Using another backend never installs it.
+- **`ffmpeg`** — optional, but needed for `batch --merge` (to insert real silence)
+  and for the `system` backend (to convert WAV/AIFF to mp3). Without it, merge falls
+  back to raw MP3 frame concatenation.
+- The `openai` backend needs nothing beyond the standard library.
 
 ## Troubleshooting
 
 Start here:
 
 ```bash
-python3 scripts/tts.py doctor
+python3 scripts/tts.py doctor      # full environment check
+python3 scripts/tts.py providers   # just the backend status
 ```
-
-It reports your Python version, whether `edge-tts` is importable, whether `ffmpeg` is on `PATH`, and whether the speech service is reachable.
 
 | Symptom | Cause / fix |
 |---|---|
-| `No audio was received` | Almost always a single-language voice reading a different language. Use a multilingual voice. |
-| `edge-tts` won't install | Managed/offline environment. Install manually, or set `TTS_NO_AUTO_INSTALL=1`. |
-| Empty `.srt` file | Only happens on `edge-tts` builds without word-boundary support; upgrade the package. |
-| Service unreachable | Corporate network. Try `--proxy http://127.0.0.1:7890`. |
+| `No audio was received` (edge) | Almost always a single-language voice reading a different language. Use a multilingual voice. |
+| `--srt` refused | That backend reports no word timings. Use `--provider edge`, or drop `--srt`. |
+| `openai` says no API key | Set `OPENAI_API_KEY`, or pass `--api-key`. Self-hosted servers still usually require *some* value. |
+| `openai` returns HTTP 400 | The server rejected a field. Check `--voice` and `--model` against `voices --provider openai`. |
+| `system` backend unavailable on Linux | `apt install espeak-ng`. |
+| `system` backend needs ffmpeg | Install ffmpeg — the OS engines cannot write mp3 directly. |
+| `edge-tts` won't install | Managed/offline environment. Install manually, set `TTS_NO_AUTO_INSTALL=1`, or switch to `--provider system`. |
+| Empty `.srt` file | Only on `edge-tts` builds without word-boundary support; upgrade the package. |
+| Service unreachable | Corporate network. Try `--proxy http://127.0.0.1:7890` (edge only). |
 | Merge fails | `ffmpeg` missing — install it, or accept the frame-concatenation fallback. |
 
 ## License

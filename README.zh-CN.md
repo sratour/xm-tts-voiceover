@@ -2,7 +2,7 @@
 
 一个 [Agent Skill](https://code.claude.com/docs/en/skills)：把文字合成为 **mp3 配音**，并自动导出**与音频精确对齐的 SRT 字幕**。
 
-免 API Key、免注册。300+ 神经语音，覆盖 140+ 语言/地区。
+**三种后端，`--provider` 切换**：微软 Edge 神经语音（默认，免费、无需 Key）、任意 **OpenAI 兼容**接口、或**操作系统自带**引擎（完全离线）。
 
 [![CI](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/ci.yml)
 [![服务健康](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/<your-username>/tts-voiceover/actions/workflows/health.yml)
@@ -36,17 +36,78 @@
 | `say` | 把一段文本合成为 mp3（可选同时导出 `.srt`） |
 | `batch` | 批量合成多段，可合并为一个文件并导出合并字幕 |
 | `voices` | 列出可用音色，可按语言过滤 |
-| `styles` | 列出内置中文音色别名 |
+| `styles` | 列出当前后端的音色预设别名 |
+| `providers` | 列出所有后端及其可用状态 |
 | `doctor` | 环境自检，排查装不上的问题 |
+
+## 后端
+
+用 `--provider` 指定，或设置环境变量 `TTS_PROVIDER`。默认 `edge`。
+
+| 后端 | 费用 | 要 Key | 离线 | 字幕 | 覆盖范围 |
+|---|---|---|---|---|---|
+| `edge`（默认） | 免费 | ❌ | ❌ | ✅ 词级 | 300+ 音色，140+ 语言/地区 |
+| `openai` | 视服务而定 | ✅ | 视服务而定 | ❌ | OpenAI、LocalAI、Fish Speech、Kokoro-FastAPI、GPT-SoVITS、云厂商…… |
+| `system` | 免费 | ❌ | **✅** | ❌ | Windows SAPI、macOS `say`、Linux espeak-ng |
+
+```bash
+python3 scripts/tts.py providers   # 看这台机器上有哪些能用
+```
+
+### `edge` —— 默认后端
+
+无需 Key、无需注册，而且是唯一提供**词级时间戳**的后端 —— 精确对齐的字幕靠它实现。
+它也是上面那条免责声明所针对的后端。
+
+### `openai` —— 接入你自己的服务
+
+`POST /v1/audio/speech` 已经成为 TTS 服务的事实标准接口，所以一个适配器能覆盖一大片。
+把 `--base-url` 指向你的服务即可：
+
+```bash
+# OpenAI 官方
+export OPENAI_API_KEY=sk-...
+python3 scripts/tts.py say --provider openai --voice nova --text "Hello" --out out.mp3
+
+# 自建服务（例如 Kokoro-FastAPI）
+python3 scripts/tts.py say --provider openai \
+  --base-url http://127.0.0.1:8880/v1 --api-key not-needed \
+  --voice af_bella --text "Hello" --out out.mp3
+```
+
+| 参数 | 环境变量 | 默认值 |
+|---|---|---|
+| `--api-key` | `OPENAI_API_KEY` / `TTS_API_KEY` | 无（必填） |
+| `--base-url` | `OPENAI_BASE_URL` / `TTS_BASE_URL` | `https://api.openai.com/v1` |
+| `--model` | `TTS_MODEL` | `tts-1` |
+
+密钥只从参数和环境变量读取，**绝不落盘**。音色名随服务端而异：跑
+`voices --provider openai` 看你的服务提供什么（会查 `GET /audio/voices`，
+查不到则回退到 OpenAI 官方内置列表）。`--style` 预设只对 OpenAI 官方音色有效。
+
+### `system` —— 完全离线
+
+```bash
+python3 scripts/tts.py say --provider system --text "完全离线合成。" --out out.mp3
+```
+
+无需 Key、不联网、文件不出本机。代价是真实的：音质明显不如神经语音，
+而且**必须有 ffmpeg**，因为三个系统的引擎都只输出 WAV/AIFF。
+`--rate` 会换算成各引擎的原生单位（近似映射），`--volume` / `--pitch` 不支持。
+
+### 关于字幕
+
+`--srt` 只在提供词级时间戳的后端上可用 —— 目前只有 `edge`。其他后端返回的是一整块
+音频，没有任何位置信息，所以在这里要字幕会**明确报错**，而不是编一条会漂移的时间轴出来。
+要做得更好需要强制对齐（用 Whisper 重新识别音频），那是另一个量级的工作。
 
 ## 特性
 
-- **免费、无需 Key、无需账号**，使用微软 Edge 神经语音。
-- **字幕与音频精确对齐**：SRT 时间轴取自引擎真实的词边界事件，不是估算出来的。
+- **三种后端，一套命令。** 默认免费 Edge 语音；换自己的接口或彻底离线，其他用法都不用改。
+- **字幕与音频精确对齐**（edge 后端）：SRT 时间轴取自引擎真实的词边界事件，不是估算。
 - **批量 + 逐段指定音色**：有声书对话、多角色脚本可以每句换一个声音。
 - **合并带真实停顿**：`--merge` 会在段间插入真正的静音，合并字幕与音频保持同一时间轴。
 - **语速 / 音量 / 音调可调**，用相对值（`+25%`、`-10Hz`）。
-- **约 320 个音色、140 种语言/地区**：普通话、粤语、台湾、英语、日语、韩语……还有能在一句话里切换语言的多语言音色。
 - **跨平台**：纯 Python + 可选 `ffmpeg`，Windows / macOS / Linux 均可运行。
 
 ## 安装
@@ -111,14 +172,16 @@ python3 scripts/tts.py styles
 
 | 参数 | 适用 | 含义 |
 |---|---|---|
-| `--voice` | `say`、`batch` | 音色 `ShortName`，如 `zh-CN-YunxiNeural`。**它决定了语言。** |
-| `--style` | `say`、`batch` | 友好别名，如 `女声-温柔`、`en-female`、`多语言-女声` |
-| `--rate` / `--volume` / `--pitch` | `say`、`batch` | 相对值：`+25%`、`-10%`、`+20Hz` |
-| `--srt` | `say`、`batch` | 同时导出 `.srt` 字幕 |
+| `--provider` | 全部 | 后端：`edge` / `openai` / `system`（默认 `edge`，也可用 `TTS_PROVIDER`） |
+| `--voice` | `say`、`batch` | 音色名，如 `zh-CN-YunxiNeural` / `nova`。**它决定了语言。** |
+| `--style` | `say`、`batch` | 友好别名，如 `女声-温柔`、`en-female` |
+| `--rate` / `--volume` / `--pitch` | `say`、`batch` | 相对值：`+25%`、`-10%`、`+20Hz`（音量/音调仅 edge 支持） |
+| `--api-key` / `--base-url` / `--model` | openai 后端 | 接口凭据与地址，也可走环境变量 |
+| `--srt` | `say`、`batch` | 同时导出 `.srt` 字幕（仅 edge 等支持词级时间戳的后端） |
 | `--merge` / `--gap` | `batch` | 合并为一个 mp3；段间静音秒数（默认 `0.3`） |
-| `--proxy` | 全部 | HTTP 代理，如 `http://127.0.0.1:7890` |
+| `--proxy` | edge | HTTP 代理，如 `http://127.0.0.1:7890` |
 
-## 怎么选语言和声音
+## 怎么选语言和声音（以 edge 后端为例）
 
 **没有单独的「语言」参数 —— 选哪个音色就用哪种语言。** `--lang` 只存在于 `voices` 上，用来过滤列表。
 
@@ -141,10 +204,15 @@ zh-CN-XiaoxiaoNeural
 
 ## 测试与 CI
 
-这里的测试是**真实联网冒烟测试**，不是打桩的单元测试。因为本项目依赖的是一个非官方接口，
-打桩测试只能证明「桩写得对」，永远发现不了服务本身变了。`tests/smoke_test.py` 直接调真实服务，
-端到端校验 11 项：CLI 各命令、真实音频产出、词级对齐字幕、批量模式、合并停顿行为，
-以及合并字幕时间轴是否仍与合并音频一致。
+这里的测试是**真实联网冒烟测试**，不是打桩的单元测试。因为默认后端依赖一个非官方接口，
+打桩测试只能证明「桩写得对」，永远发现不了服务本身变了。`tests/smoke_test.py` 跑 21 项断言：
+
+- CLI 各命令与后端注册表
+- **真实合成**（edge 后端）+ 词级对齐字幕
+- 批量模式、带停顿的合并、合并字幕对齐
+- **OpenAI 兼容后端对本地 mock 服务**（`tests/mock_openai.py`）—— HTTP 链路、
+  错误透传、`--srt` 拒绝都覆盖到了，**不需要真实 API Key**
+- **系统自带后端**在测试运行的平台上真实执行
 
 自己跑：
 
@@ -164,25 +232,33 @@ python tests/smoke_test.py
 ## 依赖
 
 - **Python 3.9+**
-- **`edge-tts`** —— 必需。首次运行自动安装；想自己管理依赖就执行 `pip install -r requirements.txt` 并设置 `TTS_NO_AUTO_INSTALL=1`。
-- **`ffmpeg`** —— 可选，仅 `batch --merge` 需要。缺失时退化为 MP3 帧拼接。
+- **`edge-tts`** —— 仅 `edge` 后端需要。首次使用该后端时自动安装；想自己管理依赖就执行
+  `pip install -r requirements.txt` 并设置 `TTS_NO_AUTO_INSTALL=1`。
+  **用其他后端不会安装它。**
+- **`ffmpeg`** —— 可选，但 `batch --merge`（插入真实停顿）和 `system` 后端（WAV/AIFF 转 mp3）
+  需要它。缺失时合并会退化为 MP3 帧拼接。
+- `openai` 后端除标准库外**零依赖**。
 
 ## 故障排查
 
 先跑自检：
 
 ```bash
-python3 scripts/tts.py doctor
+python3 scripts/tts.py doctor      # 完整环境检查
+python3 scripts/tts.py providers   # 只看后端状态
 ```
-
-它会报告 Python 版本、`edge-tts` 是否可导入、`ffmpeg` 是否在 `PATH` 中、语音服务是否可达。
 
 | 现象 | 原因 / 处理 |
 |---|---|
-| `No audio was received` | 几乎都是单语音色去读另一种语言。改用多语言音色。 |
-| `edge-tts` 装不上 | 受管或离线环境。手动安装，或设 `TTS_NO_AUTO_INSTALL=1`。 |
+| `No audio was received`（edge） | 几乎都是单语音色去读另一种语言。改用多语言音色。 |
+| `--srt` 被拒绝 | 该后端不提供词级时间戳。改用 `--provider edge`，或去掉 `--srt`。 |
+| openai 提示没有 Key | 设置 `OPENAI_API_KEY`，或传 `--api-key`。自建服务通常也要随便填一个值。 |
+| openai 返回 HTTP 400 | 服务端拒绝了某个字段。用 `voices --provider openai` 核对 `--voice` 和 `--model`。 |
+| Linux 上 system 后端不可用 | `apt install espeak-ng`。 |
+| system 后端提示需要 ffmpeg | 装 ffmpeg —— 系统引擎无法直接输出 mp3。 |
+| `edge-tts` 装不上 | 受管或离线环境。手动安装、设 `TTS_NO_AUTO_INSTALL=1`，或改用 `--provider system`。 |
 | `.srt` 是空文件 | 仅出现在不支持词边界的旧版 `edge-tts`，升级即可。 |
-| 服务不可达 | 企业网络。试 `--proxy http://127.0.0.1:7890`。 |
+| 服务不可达 | 企业网络。试 `--proxy http://127.0.0.1:7890`（仅 edge）。 |
 | 合并失败 | 缺 `ffmpeg`，装上，或接受帧拼接的降级方案。 |
 
 ## 许可证

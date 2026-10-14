@@ -48,8 +48,17 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
+      # Windows ships SAPI and macOS ships `say`, so only Linux needs a package
+      # for the system-voice backend to be testable here.
+      - name: Install espeak-ng (Linux system-voice backend)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y espeak-ng
+
+      # compileall instead of an explicit file list or a *.py glob: PowerShell
+      # does not expand wildcards for native commands, and this keeps working
+      # when files are added.
       - name: Byte-compile
-        run: python -m py_compile scripts/tts.py tests/smoke_test.py
+        run: python -m compileall -q scripts tests
 
       - name: Report environment
         run: python scripts/tts.py doctor

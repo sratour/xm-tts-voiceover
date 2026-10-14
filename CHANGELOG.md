@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-10-14
+
+### Added
+
+- **Pluggable backend layer.** `--provider` (or `$TTS_PROVIDER`) selects the speech
+  engine; `edge` remains the default, so existing usage is unaffected.
+- **`openai` backend** — any OpenAI-compatible `POST /v1/audio/speech` endpoint.
+  One adapter covers OpenAI itself, LocalAI, Fish Speech, Kokoro-FastAPI,
+  GPT-SoVITS wrappers and cloud vendors; point `--base-url` at your service.
+  Credentials come from `--api-key` / `--base-url` / `--model` or the
+  `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `TTS_MODEL` environment variables and are
+  never written to disk.
+- **`system` backend** — Windows SAPI, macOS `say`, Linux espeak-ng. No key,
+  fully offline. Requires ffmpeg, since all three engines emit WAV/AIFF.
+- **`providers` command** — lists every backend and whether it is usable.
+- **`tests/mock_openai.py`** — a local OpenAI-compatible server, so the HTTP
+  plumbing, error propagation and `--srt` refusal are covered by CI without
+  needing a real API key.
+
+### Changed
+
+- `--srt` is now refused with an explicit message on backends that report no word
+  timings, instead of producing a subtitle file with invented timings.
+- Automatic `edge-tts` installation now happens only when the `edge` backend is
+  actually used, so `--provider system` never pulls a network dependency.
+- `doctor` reports every backend's status, not just Edge's.
+- All backends normalise their output to 24 kHz mono 48 kbps mp3, which keeps
+  `batch --merge` and the combined-subtitle timeline arithmetic valid across
+  providers.
+- The smoke test grew from 11 to 21 checks; CI installs `espeak-ng` on Linux so
+  the system backend is exercised there too.
+
 ## [1.0.0] - 2026-10-14
 
 First public release.

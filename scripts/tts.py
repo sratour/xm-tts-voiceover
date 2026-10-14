@@ -1,27 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""配音 TTS - text-to-speech voiceover CLI built on Microsoft Edge TTS.
+"""配音 TTS - text-to-speech voiceover CLI with pluggable backends.
 
-Free, no API key. Supports Chinese / English / Japanese and many more
-languages, multiple neural voices, rate / volume / pitch tuning, batch
-generation and automatic SRT subtitle export.
+Default backend is Microsoft Edge TTS: free, no API key, and the only one that
+returns word-level timings (which is what makes time-aligned subtitles possible).
+Alternatives:
+
+  * ``--provider openai``  any OpenAI-compatible ``/v1/audio/speech`` endpoint --
+    OpenAI itself, LocalAI, Fish Speech, Kokoro-FastAPI, cloud vendors, ...
+  * ``--provider system``  the OS engine (Windows SAPI / macOS ``say`` /
+    Linux espeak-ng): no key, fully offline.
 
 Usage:
   python tts.py doctor
-  python tts.py voices [--lang zh]
-  python tts.py say --text "你好，欢迎收听" --voice zh-CN-XiaoxiaoNeural --out out.mp3 [--srt]
-  python tts.py say --file script.txt --style 女声-温柔 --out out.mp3 --srt
-  python tts.py batch --file lines.json --outdir ./audio [--merge final.mp3]
-  python tts.py styles
+  python tts.py providers
+  python tts.py voices [--lang zh] [--provider openai]
+  python tts.py styles [--provider openai]
+  python tts.py say --text "你好，欢迎收听" --style 女声-温柔 --out out.mp3 --srt
+  python tts.py say --text "Hello" --provider openai --voice nova --out out.mp3
+  python tts.py say --text "完全离线" --provider system --out out.mp3
+  python tts.py batch --file lines.json --outdir ./audio --merge final.mp3
 """
 
 import argparse
-import asyncio
 import json
 import os
 import sys
-
-__version__ = "1.0.0"
 
 # The CLI prints Chinese text. On Windows, stdout/stderr default to the console
 # code page (cp936/cp1252) when piped, which raises UnicodeEncodeError. Force
@@ -32,88 +36,19 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, OSError):
         pass
 
-# ---------------------------------------------------------------- dependencies
-def _ensure_deps():
-    try:
-        import edge_tts  # noqa: F401
-        return
-    except ImportError:
-        pass
+# Importing the package from the script's own directory works because Python
+# puts the script's folder at the front of sys.path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-    if os.environ.get("TTS_NO_AUTO_INSTALL"):
-        raise SystemExit(
-            "缺少依赖 edge-tts，且已设置 TTS_NO_AUTO_INSTALL，跳过自动安装。\n"
-            "请手动安装：pip install -r requirements.txt"
-        )
+from providers import ProviderError, get as get_provider  # noqa: E402
+from providers import describe_all, names as provider_names  # noqa: E402
 
-    import subprocess
+__version__ = "1.1.0"
 
-    print("首次运行，正在安装依赖 edge-tts ...", file=sys.stderr)
-    try:
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "-q", "edge-tts"]
-        )
-    except (subprocess.CalledProcessError, OSError):
-        raise SystemExit(
-            "自动安装 edge-tts 失败。请手动执行：\n"
-            "  pip install -r requirements.txt\n"
-            "或设置 TTS_NO_AUTO_INSTALL=1 以跳过自动安装并自行管理依赖。"
-        )
-
-
-_ensure_deps()
-
-import edge_tts  # noqa: E402
-
-# ---------------------------------------------------------------- presets
-# Friendly aliases -> concrete Edge neural voices.
-STYLE_PRESETS = {
-    "女声-温柔": "zh-CN-XiaoxiaoNeural",
-    "女声-活泼": "zh-CN-XiaoyiNeural",
-    "女声-东北": "zh-CN-liaoning-XiaobeiNeural",
-    "女声-陕西": "zh-CN-shaanxi-XiaoniNeural",
-    "女声-台湾": "zh-TW-HsiaoChenNeural",
-    "女声-粤语": "zh-HK-HiuMaanNeural",
-    "男声-沉稳": "zh-CN-YunxiNeural",
-    "男声-新闻": "zh-CN-YunyangNeural",
-    "男声-少年": "zh-CN-YunjianNeural",
-    "男声-粤语": "zh-HK-WanLungNeural",
-    "en-female": "en-US-AriaNeural",
-    "en-male": "en-US-GuyNeural",
-    "ja-female": "ja-JP-NanamiNeural",
-    "ja-male": "ja-JP-KeitaNeural",
-    "ko-female": "ko-KR-SunHiNeural",
-    # multilingual voices: handle Chinese + English (and more) in one pass,
-    # use these for mixed-language scripts
-    "多语言-女声": "en-US-AvaMultilingualNeural",
-    "多语言-女声2": "en-US-EmmaMultilingualNeural",
-    "多语言-男声": "en-US-AndrewMultilingualNeural",
-    "多语言-男声2": "en-US-BrianMultilingualNeural",
-}
-
-DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
 DEFAULT_STYLE = "女声-温柔"
 
 
-def resolve_voice(voice=None, style=None):
-    """style alias wins, then explicit voice, then default."""
-    if style:
-        key = style.strip()
-        if key in STYLE_PRESETS:
-            return STYLE_PRESETS[key]
-        # allow case-insensitive lookup for the latin aliases
-        for k, v in STYLE_PRESETS.items():
-            if k.lower() == key.lower():
-                return v
-        raise SystemExit(
-            "未知音色预设: %s\n可用预设见 `python tts.py styles`" % style
-        )
-    if voice:
-        return voice.strip()
-    return DEFAULT_VOICE
-
-
-# ---------------------------------------------------------------- helpers
+# ---------------------------------------------------------------- subtitles
 def _fmt_ts(ticks):
     """100-nanosecond ticks -> SRT timestamp HH:MM:SS,mmm"""
     ms = int(ticks / 10000)
@@ -128,7 +63,7 @@ _MAX_CUE_CHARS = 18
 
 
 def _build_cues(boundaries):
-    """Group WordBoundary events into subtitle cues."""
+    """Group boundary events into subtitle cues."""
     cues = []
     buf_text, buf_start, buf_end = "", None, None
     prev_end = None
@@ -153,11 +88,24 @@ def _build_cues(boundaries):
     return cues
 
 
-def _mp3_duration(path):
-    """Duration of an mp3 in seconds.
+def _write_srt(path, cues):
+    lines = []
+    for i, (start, end, text) in enumerate(cues, 1):
+        lines.append(str(i))
+        lines.append("%s --> %s" % (_fmt_ts(start), _fmt_ts(end)))
+        lines.append(text.strip())
+        lines.append("")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
 
-    Edge TTS writes CBR 48 kbps mp3, so byte size alone is accurate; ffprobe is
-    used when present for extra safety.
+
+# ---------------------------------------------------------------- audio utils
+def _audio_duration(path):
+    """Duration in seconds. Prefers ffprobe; falls back to a CBR estimate.
+
+    The estimate assumes 48 kbps, which is what both the Edge backend and the
+    system backend's ffmpeg conversion produce. An OpenAI-compatible server may
+    return a different bitrate, so ffprobe is genuinely preferred there.
     """
     import shutil
     import subprocess
@@ -177,90 +125,161 @@ def _mp3_duration(path):
     return os.path.getsize(path) * 8.0 / 48000.0
 
 
-def _write_srt(path, cues):
-    lines = []
-    for i, (start, end, text) in enumerate(cues, 1):
-        lines.append(str(i))
-        lines.append("%s --> %s" % (_fmt_ts(start), _fmt_ts(end)))
-        lines.append(text.strip())
-        lines.append("")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+def _merge_mp3(files, out_path, gap=0.0):
+    """Concatenate mp3 files, inserting real silence of `gap` seconds between them.
 
-
-_BOUNDARY_TYPES = ("WordBoundary", "SentenceBoundary")
-
-
-class SynthError(RuntimeError):
-    """Raised when one synthesis request fails."""
-
-
-async def _synth(text, voice, rate, volume, pitch, out_path, proxy=None, word_level=True):
-    """Synthesize one text block. Returns list of boundary events (word level by default)."""
-    kwargs = {"rate": rate, "volume": volume, "pitch": pitch}
-    if proxy:
-        kwargs["proxy"] = proxy
-    try:
-        communicate = edge_tts.Communicate(
-            text, voice, boundary="WordBoundary" if word_level else "SentenceBoundary", **kwargs
-        )
-    except TypeError:
-        # older edge-tts without the `boundary` kwarg
-        communicate = edge_tts.Communicate(text, voice, **kwargs)
+    The silence is generated at 24 kHz mono 48 kbps to match the backend output,
+    so the whole thing is stream-copied with no re-encode.
+    """
+    import shutil
+    import subprocess
 
     os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
-    boundaries = []
-    tmp = out_path + ".part"
-    try:
-        with open(tmp, "wb") as f:
-            async for chunk in communicate.stream():
-                ctype = chunk.get("type")
-                if ctype == "audio":
-                    f.write(chunk["data"])
-                elif ctype in _BOUNDARY_TYPES:
-                    boundaries.append(chunk)
-    except Exception as exc:
-        if os.path.exists(tmp):
-            os.remove(tmp)
-        name = type(exc).__name__
-        if name == "NoAudioReceived":
-            raise SynthError(
-                "音色 %s 没有产出音频。常见原因：用单语音色读另一种语言"
-                "（例如 en-US-AriaNeural 读中文）。请换成多语言音色"
-                "（--style 多语言-女声 / 多语言-男声）或改用对应语言的音色。" % voice
+    ffmpeg = shutil.which("ffmpeg")
+
+    silence = None
+    if ffmpeg and gap > 0 and len(files) > 1:
+        silence = out_path + ".gap.mp3"
+        subprocess.check_call(
+            [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
+             "-t", "%.3f" % gap, "-c:a", "libmp3lame", "-b:a", "48k",
+             "-ar", "24000", "-ac", "1", silence]
+        )
+
+    seq = []
+    for i, p in enumerate(files):
+        if i and silence:
+            seq.append(silence)
+        seq.append(p)
+
+    if ffmpeg:
+        listfile = out_path + ".list.txt"
+        with open(listfile, "w", encoding="utf-8") as f:
+            for p in seq:
+                f.write("file '%s'\n" % os.path.abspath(p).replace("\\", "/").replace("'", "'\\''"))
+        try:
+            subprocess.check_call(
+                [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+                 "-f", "concat", "-safe", "0", "-i", listfile, "-c", "copy", out_path]
             )
-        raise SynthError("%s: %s" % (name, exc))
-    os.replace(tmp, out_path)
-    return boundaries
+        finally:
+            os.remove(listfile)
+            if silence and os.path.exists(silence):
+                os.remove(silence)
+        return
+
+    # fallback: mp3 is frame-based, so a plain byte concat is usually playable
+    with open(out_path, "wb") as out:
+        for p in seq:
+            with open(p, "rb") as src:
+                out.write(src.read())
+
+
+# ---------------------------------------------------------------- provider glue
+def _make_provider(args):
+    options = {
+        "api_key": getattr(args, "api_key", None),
+        "base_url": getattr(args, "base_url", None),
+        "model": getattr(args, "model", None),
+        "proxy": getattr(args, "proxy", None),
+    }
+    try:
+        provider = get_provider(getattr(args, "provider", None), options)
+    except ProviderError as exc:
+        raise SystemExit(str(exc))
+
+    ok, reason = provider.available()
+    if not ok:
+        message = "后端 %s 不可用：%s" % (provider.name, reason)
+        if provider.SETUP_HINT:
+            message += "\n配置提示：%s" % provider.SETUP_HINT
+        message += "\n查看全部后端状态：tts.py providers"
+        raise SystemExit(message)
+    return provider
+
+
+def _guard_srt(provider, wants_srt):
+    if wants_srt and not provider.supports_srt:
+        raise SystemExit(
+            "后端 %s 无法生成字幕。\n"
+            "原因：该接口只返回整段音频，不提供每个词的时间位置，"
+            "硬凑时间轴只会得到对不上的字幕。\n"
+            "要字幕请改用 --provider edge（它返回词级时间戳），"
+            "或去掉 --srt 只输出音频。" % provider.name
+        )
+
+
+def _warn_ignored(provider, volume, pitch):
+    missing = provider.unsupported_features(volume, pitch)
+    if missing:
+        print("提示：后端 %s 不支持 %s，已忽略。" % (provider.name, "、".join(missing)),
+              file=sys.stderr)
+
+
+def _voice_label(voice):
+    return voice if voice else "（系统默认）"
+
+
+def _read_text(args):
+    if getattr(args, "file", None):
+        with open(args.file, "r", encoding="utf-8") as f:
+            text = f.read()
+    elif getattr(args, "text", None):
+        text = args.text
+    else:
+        text = sys.stdin.read()
+    text = text.strip()
+    if not text:
+        raise SystemExit("文本为空，请用 --text / --file 提供内容，或通过 stdin 传入。")
+    return text
 
 
 # ---------------------------------------------------------------- commands
-def cmd_voices(args):
-    async def _run():
-        return await edge_tts.list_voices()
+def cmd_providers(args):
+    print("可用后端（--provider 可指定，默认 edge）：")
+    print()
+    for name, label, ok, reason, needs_ffmpeg in describe_all():
+        mark = "[ok]  " if ok else "[--]  "
+        default = "  ← 默认" if name == "edge" else ""
+        print("%s%-8s %s%s" % (mark, name, label, default))
+        print("          %s" % reason)
+    print()
+    print("切换后端：--provider <名称>，或设置环境变量 TTS_PROVIDER")
 
-    voices = asyncio.run(_run())
-    key = (args.lang or "").strip().lower()
-    rows = []
-    for v in voices:
-        if key and key not in v["ShortName"].lower():
-            continue
-        rows.append((v["ShortName"], v["Gender"], v.get("Locale", "")))
-    rows.sort()
-    if not rows:
-        print("没有匹配的音色，请换个 --lang 关键词，例如 zh / en / ja")
+
+def cmd_voices(args):
+    provider = _make_provider(args)
+    try:
+        voices = provider.list_voices(args.lang)
+    except ProviderError as exc:
+        raise SystemExit("获取音色列表失败：%s" % exc)
+
+    if not voices:
+        print("没有匹配的音色。换个 --lang 关键词（如 zh / en / ja），"
+              "或用 --voice 直接指定音色名。")
         return
-    print("%-34s %-8s %s" % ("VOICE", "GENDER", "LOCALE"))
-    for name, gender, locale in rows:
-        print("%-34s %-8s %s" % (name, gender, locale))
-    print("\n共 %d 个音色" % len(rows))
+
+    print("后端: %s" % provider.name)
+    print("%-36s %-8s %s" % ("VOICE", "GENDER", "LOCALE"))
+    for v in voices:
+        print("%-36s %-8s %s" % (v["id"], v.get("gender", ""), v.get("locale", "")))
+    print("\n共 %d 个音色" % len(voices))
+
+    if provider.name == "openai" and not getattr(provider, "voices_from_server", True):
+        print("（服务端未提供音色列表，以上为 OpenAI 官方内置音色）")
 
 
 def cmd_styles(args):
-    print("音色预设（--style 可直接用中文别名）：")
-    for k, v in STYLE_PRESETS.items():
-        print("  %-12s -> %s" % (k, v))
-    print("\n也可以直接传 --voice <ShortName>，完整列表见 `python tts.py voices`")
+    provider = _make_provider(args)
+    if not provider.PRESETS:
+        print("后端 %s 没有内置音色预设，请直接用 --voice 指定音色。" % provider.name)
+        return
+    print("后端 %s 的音色预设（--style 可直接用别名）：" % provider.name)
+    for alias, vid in provider.PRESETS.items():
+        print("  %-12s -> %s" % (alias, vid))
+    print("\n也可以直接传 --voice <音色名>；完整列表见 `tts.py voices --provider %s`"
+          % provider.name)
 
 
 def cmd_doctor(args):
@@ -268,7 +287,7 @@ def cmd_doctor(args):
     import shutil
 
     print("配音 TTS - 环境自检")
-    print("-" * 46)
+    print("-" * 52)
 
     problems = []
 
@@ -280,26 +299,40 @@ def cmd_doctor(args):
         problems.append("Python 版本过低")
     print("       解释器: %s" % sys.executable)
 
-    print("[ok]   edge-tts %s" % getattr(edge_tts, "__version__", "?"))
-
     ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
     if ffmpeg:
         print("[ok]   ffmpeg: %s" % ffmpeg)
+        print("[%s]   ffprobe: %s" % ("ok" if ffprobe else "--", ffprobe or "未找到（时长将用估算值）"))
     else:
-        print("[--]   ffmpeg 未找到 —— 可选，仅 batch --merge 需要")
+        print("[--]   ffmpeg 未找到 —— batch --merge 与 system 后端需要它")
 
-    print("-" * 46)
+    print("-" * 52)
+    print("后端状态：")
+    for name, label, ok, reason, needs_ffmpeg in describe_all():
+        print("  [%s] %-8s %s" % ("ok" if ok else "--", name, label))
+        print("           %s" % reason)
+        if ok and needs_ffmpeg and not ffmpeg:
+            print("           注意：该后端还需要 ffmpeg 才能输出 mp3")
 
+    print("-" * 52)
+
+    # The default backend is the one users hit first, so probe it for real.
     try:
-        voices = asyncio.run(edge_tts.list_voices())
-        zh = sum(1 for x in voices if x["ShortName"].startswith("zh-"))
-        print("[ok]   语音服务可达，共 %d 个音色（其中中文 %d 个）" % (len(voices), zh))
+        provider = get_provider(None, {})
+        ok, reason = provider.available()
+        if not ok:
+            print("[FAIL] 默认后端 %s 不可用：%s" % (provider.name, reason))
+            problems.append("默认后端不可用")
+        else:
+            voices = provider.list_voices("zh")
+            print("[ok]   默认后端 %s 可用，中文音色 %d 个" % (provider.name, len(voices)))
     except Exception as exc:
-        print("[FAIL] 无法连接语音服务: %s: %s" % (type(exc).__name__, exc))
+        print("[FAIL] 默认后端探测失败: %s: %s" % (type(exc).__name__, exc))
         print("       检查网络；若在企业网络/代理后，试试 --proxy http://127.0.0.1:7890")
-        problems.append("语音服务不可达")
+        problems.append("默认后端不可达")
 
-    print("-" * 46)
+    print("-" * 52)
     if problems:
         print("发现问题: %s" % "、".join(problems))
         sys.exit(1)
@@ -307,30 +340,25 @@ def cmd_doctor(args):
 
 
 def cmd_say(args):
-    if args.file:
-        with open(args.file, "r", encoding="utf-8") as f:
-            text = f.read()
-    elif args.text:
-        text = args.text
-    else:
-        text = sys.stdin.read()
+    text = _read_text(args)
+    provider = _make_provider(args)
+    _guard_srt(provider, args.srt)
+    _warn_ignored(provider, args.volume, args.pitch)
 
-    text = text.strip()
-    if not text:
-        raise SystemExit("文本为空，请用 --text / --file 提供内容")
-
-    voice = resolve_voice(args.voice, args.style)
+    voice = provider.resolve_voice(args.voice, args.style)
     out = args.out or "voiceover.mp3"
     if not out.lower().endswith(".mp3"):
         out += ".mp3"
 
     try:
-        boundaries = asyncio.run(
-            _synth(text, voice, args.rate, args.volume, args.pitch, out, args.proxy)
+        boundaries = provider.synthesize(
+            text, voice, args.rate, args.volume, args.pitch, out
         )
-    except SynthError as exc:
+    except ProviderError as exc:
         raise SystemExit("合成失败：%s" % exc)
-    print("音色: %s" % voice)
+
+    print("后端: %s" % provider.name)
+    print("音色: %s" % _voice_label(voice))
     print("输出: %s" % os.path.abspath(out))
     print("字数: %d" % len(text))
 
@@ -369,6 +397,10 @@ def cmd_batch(args):
     if not items:
         raise SystemExit("batch 文件里没有可合成的内容")
 
+    provider = _make_provider(args)
+    _guard_srt(provider, args.srt)
+    _warn_ignored(provider, args.volume, args.pitch)
+
     outdir = args.outdir or "voiceover"
     os.makedirs(outdir, exist_ok=True)
     width = max(3, len(str(len(items))))
@@ -378,11 +410,13 @@ def cmd_batch(args):
     all_cues = []
     timeline = 0  # ticks, for a merged subtitle file
     gap_ticks = int(max(0.0, args.gap) * 10_000_000)
+
     for i, it in enumerate(items, 1):
         text = str(it.get("text", "")).strip()
         if not text:
             continue
-        voice = resolve_voice(it.get("voice") or args.voice, it.get("style") or args.style)
+        voice = provider.resolve_voice(it.get("voice") or args.voice,
+                                       it.get("style") or args.style)
         rate = it.get("rate") or args.rate
         volume = it.get("volume") or args.volume
         pitch = it.get("pitch") or args.pitch
@@ -392,26 +426,25 @@ def cmd_batch(args):
         out = os.path.join(outdir, name)
 
         try:
-            boundaries = asyncio.run(
-                _synth(text, voice, rate, volume, pitch, out, args.proxy)
-            )
-        except SynthError as exc:
+            boundaries = provider.synthesize(text, voice, rate, volume, pitch, out)
+        except ProviderError as exc:
             failed.append((i, text, voice, str(exc)))
-            print("[%d/%d] 失败 (%s) %s" % (i, len(items), voice, exc), file=sys.stderr)
+            print("[%d/%d] 失败 (%s) %s" % (i, len(items), _voice_label(voice), exc),
+                  file=sys.stderr)
             continue
 
         made.append(out)
-        print("[%d/%d] %s  (%s)" % (i, len(items), out, voice))
+        print("[%d/%d] %s  (%s)" % (i, len(items), out, _voice_label(voice)))
 
-        cues = _build_cues(boundaries)
         if args.srt:
+            cues = _build_cues(boundaries)
             _write_srt(os.path.splitext(out)[0] + ".srt", cues)
-        for s, e, t in cues:
-            all_cues.append((timeline + s, timeline + e, t))
-        # Advance by the segment's real audio length (which includes trailing
-        # silence after the last word boundary), not by the last cue end — using
-        # the cue end would make the merged SRT drift ahead of the merged audio.
-        timeline += int(_mp3_duration(out) * 10_000_000) + gap_ticks
+            for s, e, t in cues:
+                all_cues.append((timeline + s, timeline + e, t))
+            # Advance by the segment's real audio length (which includes trailing
+            # silence after the last boundary), not by the last cue end -- using
+            # the cue end would make the merged SRT drift ahead of the audio.
+            timeline += int(_audio_duration(out) * 10_000_000) + gap_ticks
 
     if args.srt and all_cues:
         merged_srt = os.path.join(outdir, "all.srt")
@@ -423,67 +456,42 @@ def cmd_batch(args):
         _merge_mp3(made, merge_path, gap=max(0.0, args.gap))
         print("合并音频: %s" % os.path.abspath(merge_path))
 
-    print("\n完成，成功 %d / 共 %d 段，目录: %s" % (len(made), len(items), os.path.abspath(outdir)))
+    print("\n完成，成功 %d / 共 %d 段，目录: %s"
+          % (len(made), len(items), os.path.abspath(outdir)))
     if failed:
         print("\n失败 %d 段：" % len(failed), file=sys.stderr)
         for i, text, voice, err in failed:
-            print("  第 %d 段 [%s] %s" % (i, voice, err), file=sys.stderr)
+            print("  第 %d 段 [%s] %s" % (i, _voice_label(voice), err), file=sys.stderr)
         sys.exit(1)
 
 
-def _merge_mp3(files, out_path, gap=0.0):
-    """Concatenate MP3 files, inserting real silence of `gap` seconds between them.
-
-    Edge TTS emits 24 kHz mono 48 kbps mp3, so the silence is generated with
-    matching parameters and the whole thing is stream-copied (no re-encode).
-    """
-    import shutil
-    import subprocess
-
-    os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
-    ffmpeg = shutil.which("ffmpeg")
-
-    silence = None
-    if ffmpeg and gap > 0 and len(files) > 1:
-        silence = out_path + ".gap.mp3"
-        subprocess.check_call(
-            [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-             "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
-             "-t", "%.3f" % gap, "-c:a", "libmp3lame", "-b:a", "48k",
-             "-ar", "24000", "-ac", "1", silence]
-        )
-
-    seq = []
-    for i, p in enumerate(files):
-        if i and silence:
-            seq.append(silence)
-        seq.append(p)
-
-    if ffmpeg:
-        listfile = out_path + ".list.txt"
-        with open(listfile, "w", encoding="utf-8") as f:
-            for p in seq:
-                f.write("file '%s'\n" % os.path.abspath(p).replace("\\", "/").replace("'", "'\\''"))
-        subprocess.check_call(
-            [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-             "-f", "concat", "-safe", "0", "-i", listfile, "-c", "copy", out_path]
-        )
-        os.remove(listfile)
-        if silence and os.path.exists(silence):
-            os.remove(silence)
-        return
-    # fallback: MP3 is frame-based, so a plain byte concat is usually playable
-    with open(out_path, "wb") as out:
-        for p in seq:
-            with open(p, "rb") as src:
-                out.write(src.read())
-
-
 # ---------------------------------------------------------------- cli
+def add_provider_flags(sp):
+    sp.add_argument(
+        "--provider",
+        help="语音后端：%s（默认取 $TTS_PROVIDER，否则 edge）" % " / ".join(provider_names()),
+    )
+    sp.add_argument("--api-key",
+                    help="API Key；也可用环境变量 OPENAI_API_KEY / TTS_API_KEY")
+    sp.add_argument("--base-url",
+                    help="OpenAI 兼容接口地址；也可用环境变量 OPENAI_BASE_URL / TTS_BASE_URL")
+    sp.add_argument("--model",
+                    help="模型名；也可用环境变量 TTS_MODEL")
+
+
+def add_voice_flags(sp):
+    sp.add_argument("--voice", help="音色名，如 zh-CN-YunxiNeural / nova")
+    sp.add_argument("--style", help="音色预设别名，如 女声-温柔 / 男声-新闻")
+    sp.add_argument("--rate", default="+0%", help="语速，如 +25%% / -10%%")
+    sp.add_argument("--volume", default="+0%", help="音量，如 +30%%（仅 edge 支持）")
+    sp.add_argument("--pitch", default="+0Hz", help="音调，如 +20Hz（仅 edge 支持）")
+    sp.add_argument("--proxy", help="HTTP 代理，如 http://127.0.0.1:7890（仅 edge 支持）")
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog="tts.py",
-        description="配音 TTS - 基于 Edge TTS 的免费语音合成（无需 API Key）",
+        description="配音 TTS - 文字转语音配音，支持 Edge TTS / OpenAI 兼容接口 / 系统语音",
     )
     p.add_argument("--version", action="version",
                    version="tts-voiceover %s" % __version__)
@@ -491,28 +499,27 @@ def build_parser():
 
     v = sub.add_parser("voices", help="列出可用音色")
     v.add_argument("--lang", default="", help="按语言过滤，如 zh / en / ja")
+    add_provider_flags(v)
     v.set_defaults(func=cmd_voices)
 
-    s = sub.add_parser("styles", help="列出中文音色预设")
+    s = sub.add_parser("styles", help="列出当前后端的音色预设")
+    add_provider_flags(s)
     s.set_defaults(func=cmd_styles)
+
+    pr = sub.add_parser("providers", help="列出所有后端及其可用状态")
+    pr.set_defaults(func=cmd_providers)
 
     d = sub.add_parser("doctor", help="环境自检（排查装不上的问题）")
     d.set_defaults(func=cmd_doctor)
-
-    def add_common(sp):
-        sp.add_argument("--voice", help="音色 ShortName，如 zh-CN-YunxiNeural")
-        sp.add_argument("--style", help="音色预设别名，如 女声-温柔 / 男声-新闻")
-        sp.add_argument("--rate", default="+0%", help="语速，如 +20%% / -10%%")
-        sp.add_argument("--volume", default="+0%", help="音量，如 +30%%")
-        sp.add_argument("--pitch", default="+0Hz", help="音调，如 +20Hz / -15Hz")
-        sp.add_argument("--proxy", help="HTTP 代理，如 http://127.0.0.1:7890")
 
     a = sub.add_parser("say", help="把一段文本合成为 mp3")
     a.add_argument("--text", help="要合成的文本")
     a.add_argument("--file", help="从 txt 文件读取文本")
     a.add_argument("--out", default="voiceover.mp3", help="输出 mp3 路径")
-    a.add_argument("--srt", action="store_true", help="同时导出 .srt 字幕")
-    add_common(a)
+    a.add_argument("--srt", action="store_true",
+                   help="同时导出 .srt 字幕（需要 edge 等支持词级时间戳的后端）")
+    add_voice_flags(a)
+    add_provider_flags(a)
     a.set_defaults(func=cmd_say)
 
     b = sub.add_parser("batch", help="批量合成（JSON 或按行分隔的 txt）")
@@ -522,7 +529,8 @@ def build_parser():
     b.add_argument("--merge", help="把结果合并为一个 mp3")
     b.add_argument("--gap", type=float, default=0.3,
                    help="合并时每段之间插入的静音秒数，默认 0.3")
-    add_common(b)
+    add_voice_flags(b)
+    add_provider_flags(b)
     b.set_defaults(func=cmd_batch)
 
     return p
