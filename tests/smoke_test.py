@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""End-to-end smoke test for tts-voiceover.
+"""End-to-end smoke test for xm-tts-voiceover.
 
 This is deliberately NOT a unit-test suite with mocked network responses. The
 whole point of this project is that its default backend rides on an undocumented
@@ -105,7 +105,7 @@ def srt_cues(path):
 
 def check_cli_surface(tmp):
     code, out, err = run_tts("--version")
-    report("--version responds", code == 0 and "tts-voiceover" in out, out.strip() or tail(err))
+    report("--version responds", code == 0 and "xm-tts-voiceover" in out, out.strip() or tail(err))
 
     code, out, err = run_tts("providers")
     listed = all(name in out for name in ("edge", "openai", "system"))
@@ -256,7 +256,7 @@ def check_system_backend(tmp):
 def main():
     import tts  # noqa: F401  (validates importability)
 
-    print("tts-voiceover smoke test")
+    print("xm-tts-voiceover smoke test")
     print("=" * 54)
 
     tmp = tempfile.mkdtemp(prefix="tts-smoke-")

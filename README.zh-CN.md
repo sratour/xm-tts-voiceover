@@ -1,11 +1,11 @@
-# tts-voiceover · 配音 TTS
+# xm-tts-voiceover · 配音 TTS
 
 一个 [Agent Skill](https://code.claude.com/docs/en/skills)：把文字合成为 **mp3 配音**，并自动导出**与音频精确对齐的 SRT 字幕**。
 
 **三种后端，`--provider` 切换**：微软 Edge 神经语音（默认，免费、无需 Key）、任意 **OpenAI 兼容**接口、或**操作系统自带**引擎（完全离线）。
 
-[![CI](https://github.com/sratour/tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/sratour/tts-voiceover/actions/workflows/ci.yml)
-[![服务健康](https://github.com/sratour/tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/sratour/tts-voiceover/actions/workflows/health.yml)
+[![CI](https://github.com/sratour/xm-tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/sratour/xm-tts-voiceover/actions/workflows/ci.yml)
+[![服务健康](https://github.com/sratour/xm-tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/sratour/xm-tts-voiceover/actions/workflows/health.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [English](README.md)
@@ -117,15 +117,15 @@ python3 scripts/tts.py say --provider system --text "完全离线合成。" --ou
 **WorkBuddy AI**
 
 ```bash
-git clone https://github.com/sratour/tts-voiceover.git ~/.workbuddy-ai/skills/tts-voiceover
+git clone https://github.com/sratour/xm-tts-voiceover.git ~/.workbuddy-ai/skills/xm-tts-voiceover
 ```
 
-Windows 下对应路径为 `%USERPROFILE%\.workbuddy-ai\skills\tts-voiceover`。
+Windows 下对应路径为 `%USERPROFILE%\.workbuddy-ai\skills\xm-tts-voiceover`。
 
 **Claude Code**
 
 ```bash
-git clone https://github.com/sratour/tts-voiceover.git ~/.claude/skills/tts-voiceover
+git clone https://github.com/sratour/xm-tts-voiceover.git ~/.claude/skills/xm-tts-voiceover
 ```
 
 **其他 agent** —— 克隆到你所用宿主读取 skill 的目录即可，唯一要求是宿主能解析 `SKILL.md` 的 frontmatter。
@@ -133,7 +133,7 @@ git clone https://github.com/sratour/tts-voiceover.git ~/.claude/skills/tts-voic
 装好后**重启一次会话**，新 skill 才会被加载。然后自检环境：
 
 ```bash
-python3 ~/.workbuddy-ai/skills/tts-voiceover/scripts/tts.py doctor
+python3 ~/.workbuddy-ai/skills/xm-tts-voiceover/scripts/tts.py doctor
 ```
 
 ## 用法
@@ -141,7 +141,7 @@ python3 ~/.workbuddy-ai/skills/tts-voiceover/scripts/tts.py doctor
 正常情况下你不需要敲命令 —— 直接用自然语言跟 agent 说就行（比如「用活泼女声读这段口播」）。想直接调用：
 
 ```bash
-cd ~/.workbuddy-ai/skills/tts-voiceover
+cd ~/.workbuddy-ai/skills/xm-tts-voiceover
 
 # 单段合成 + 字幕
 python3 scripts/tts.py say --text "欢迎收听。" --voice zh-CN-XiaoxiaoNeural --out intro.mp3 --srt

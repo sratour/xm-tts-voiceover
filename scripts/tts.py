@@ -494,7 +494,7 @@ def build_parser():
         description="配音 TTS - 文字转语音配音，支持 Edge TTS / OpenAI 兼容接口 / 系统语音",
     )
     p.add_argument("--version", action="version",
-                   version="tts-voiceover %s" % __version__)
+                   version="xm-tts-voiceover %s" % __version__)
     sub = p.add_subparsers(dest="cmd", required=True)
 
     v = sub.add_parser("voices", help="列出可用音色")

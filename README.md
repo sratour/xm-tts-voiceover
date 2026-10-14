@@ -1,11 +1,11 @@
-# tts-voiceover
+# xm-tts-voiceover
 
 An [Agent Skill](https://code.claude.com/docs/en/skills) that turns text into **mp3 voiceover with time-aligned SRT subtitles** — for AI agents that support the `SKILL.md` convention.
 
 Three pluggable backends: Microsoft Edge neural voices (default — free, no API key), any **OpenAI-compatible** `/v1/audio/speech` endpoint, or your **operating system's** own engine for fully offline use.
 
-[![CI](https://github.com/sratour/tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/sratour/tts-voiceover/actions/workflows/ci.yml)
-[![Service health](https://github.com/sratour/tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/sratour/tts-voiceover/actions/workflows/health.yml)
+[![CI](https://github.com/sratour/xm-tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/sratour/xm-tts-voiceover/actions/workflows/ci.yml)
+[![Service health](https://github.com/sratour/xm-tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/sratour/xm-tts-voiceover/actions/workflows/health.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [中文说明](README.zh-CN.md)
@@ -127,15 +127,15 @@ Clone into the directory your agent scans for skills.
 **WorkBuddy AI**
 
 ```bash
-git clone https://github.com/sratour/tts-voiceover.git ~/.workbuddy-ai/skills/tts-voiceover
+git clone https://github.com/sratour/xm-tts-voiceover.git ~/.workbuddy-ai/skills/xm-tts-voiceover
 ```
 
-On Windows, that path is `%USERPROFILE%\.workbuddy-ai\skills\tts-voiceover`.
+On Windows, that path is `%USERPROFILE%\.workbuddy-ai\skills\xm-tts-voiceover`.
 
 **Claude Code**
 
 ```bash
-git clone https://github.com/sratour/tts-voiceover.git ~/.claude/skills/tts-voiceover
+git clone https://github.com/sratour/xm-tts-voiceover.git ~/.claude/skills/xm-tts-voiceover
 ```
 
 **Other agents** — clone into whatever skills directory your host uses. The only requirement is that the host reads `SKILL.md` frontmatter.
@@ -145,7 +145,7 @@ Restart the agent session afterwards so the new skill is picked up.
 Then verify the environment:
 
 ```bash
-python3 ~/.workbuddy-ai/skills/tts-voiceover/scripts/tts.py doctor
+python3 ~/.workbuddy-ai/skills/xm-tts-voiceover/scripts/tts.py doctor
 ```
 
 ## Usage
@@ -154,7 +154,7 @@ The agent invokes the script for you — you normally just ask in natural langua
 ("read this script in a lively female voice"). To call it directly:
 
 ```bash
-cd ~/.workbuddy-ai/skills/tts-voiceover
+cd ~/.workbuddy-ai/skills/xm-tts-voiceover
 
 # one-shot synthesis, with subtitles
 python3 scripts/tts.py say --text "Welcome aboard." --voice en-US-AriaNeural --out intro.mp3 --srt

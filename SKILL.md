@@ -1,5 +1,5 @@
 ---
-name: tts-voiceover
+name: xm-tts-voiceover
 description: "配音 TTS - 把文字合成为语音配音（mp3），并可自动生成同步字幕。当用户需要配音、语音合成、文字转语音、TTS、朗读、旁白、有声书、短视频配音、多音色批量配音、导出字幕时使用。支持三种后端：微软 Edge TTS（默认，免费、无需 Key、有词级时间戳）、任意 OpenAI 兼容接口（OpenAI / LocalAI / Fish Speech / Kokoro-FastAPI / 云厂商，用 --base-url 接入）、系统自带语音（Windows SAPI / macOS say / Linux espeak，完全离线）。可调语速/音量/音调。"
 description_en: "Text-to-speech voiceover that turns text into mp3 narration and time-aligned SRT subtitles. Use for voiceover, TTS, narration, audiobooks, short-video dubbing, batch multi-voice synthesis, or subtitle export. Three pluggable backends: Microsoft Edge neural voices (default; free, no API key, word-level timings), any OpenAI-compatible /v1/audio/speech endpoint, or the OS-native engine for fully offline use."
 version: 1.1.0
