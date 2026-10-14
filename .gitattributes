@@ -1,0 +1,13 @@
+# Normalize line endings across platforms
+* text=auto eol=lf
+
+# Explicit types
+*.py    text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf
+
+# Binary
+*.mp3   binary
+*.png   binary
+*.jpg   binary

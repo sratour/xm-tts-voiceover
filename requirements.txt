@@ -1,0 +1,4 @@
+# Required. Tested with 7.3.1.
+# The `boundary="WordBoundary"` kwarg used for word-level subtitles needs 7.x;
+# older releases still work but fall back to sentence-level timings.
+edge-tts>=7.0.0

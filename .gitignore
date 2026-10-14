@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# generated audio and subtitles
+*.mp3
+*.srt
+*.part
+*.list.txt
+outputs/
+
+# keep any checked-in examples
+!examples/**/*.mp3
+!examples/**/*.srt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
