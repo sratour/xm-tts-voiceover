@@ -238,6 +238,17 @@ Run it yourself:
 python tests/smoke_test.py
 ```
 
+The checks split into two tiers. **Offline** checks — the CLI surface, the backend
+registry, the OpenAI backend against the local mock server, and the system-native
+backend — are a hard gate: any failure fails the run. **Live** checks — real Edge
+synthesis, `voices --lang zh`, `doctor`, and batch/merge through the Edge backend —
+talk to the live Microsoft endpoint. They are normally required too, but if you set
+`TTS_SMOKE_REQUIRE_LIVE=0` a live-service failure downgrades to a `[warn]` and the
+run still exits 0. This is exactly what `ci.yml` does: GitHub's runner IPs sit behind
+datacenter ranges the endpoint may refuse, so CI treats a live outage there as a
+warning rather than a code defect. Real outages are caught instead by the daily
+`health.yml` probe, which files an issue against the live service itself.
+
 Two workflows back this up:
 
 | Workflow | Trigger | What it does |

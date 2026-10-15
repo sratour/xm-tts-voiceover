@@ -36,6 +36,11 @@ jobs:
       # The CLI prints Chinese; force UTF-8 so piped output is identical
       # on every platform instead of following the Windows code page.
       PYTHONUTF8: "1"
+      # GitHub runners sit behind datacenter IPs that Microsoft's undocumented
+      # endpoint may refuse; a live-service failure there is not a code defect,
+      # so live checks are advisory here. Real outages are caught by the health
+      # workflow.
+      TTS_SMOKE_REQUIRE_LIVE: "0"
 
     steps:
       - uses: actions/checkout@v4

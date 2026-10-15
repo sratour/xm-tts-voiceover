@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-10-15
+
+### Fixed
+
+- **CI now survives the live endpoint refusing GitHub's runner IPs.** The smoke test
+  was a single hard gate where *every* check — including live Edge synthesis — had to
+  pass, so all five matrix jobs failed on CI even though the code was fine.
+- The smoke test now splits into two tiers. **Offline** checks (CLI surface, backend
+  registry, the OpenAI backend against the local mock server, the system-native
+  backend) remain a hard gate. **Live** checks (real Edge synthesis, `voices --lang zh`,
+  `doctor`, and Edge batch/merge) can be made advisory with
+  `TTS_SMOKE_REQUIRE_LIVE=0`, which downgrades a live-service failure to a `[warn]`
+  and exits 0 instead of failing.
+- `ci.yml` sets `TTS_SMOKE_REQUIRE_LIVE=0` and `PYTHONUTF8=1`. Real outages are still
+  caught by the daily `health.yml` probe, which files an issue against the live
+  service itself.
+- Updated the Testing-and-CI sections of both READMEs to document the two-tier
+  behaviour and the `TTS_SMOKE_REQUIRE_LIVE` switch.
+
 ## [1.1.0] - 2026-10-14
 
 ### Added

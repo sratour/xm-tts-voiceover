@@ -17,9 +17,21 @@ Coverage:
   mock server (so no API key is needed), and the OS-native backend is exercised
   for real on whichever platform this runs on
 
+The checks come in two tiers:
+
+* **offline** -- the CLI surface, the provider layer against a local mock
+  server, and the OS-native backend. Deterministic, and they always gate the
+  run.
+* **live** -- anything that actually calls Microsoft's endpoint. These are the
+  whole point locally, but GitHub's runners sit behind datacenter IPs that the
+  endpoint does not reliably serve, so CI sets ``TTS_SMOKE_REQUIRE_LIVE=0`` and
+  a live failure degrades to a warning. Real outages are the job of the daily
+  health workflow, which is allowed to fail and open an issue.
+
 Run locally:
 
-    python tests/smoke_test.py
+    python tests/smoke_test.py                    # live checks are mandatory
+    TTS_SMOKE_REQUIRE_LIVE=0 python tests/smoke_test.py   # live checks advisory
 
 Exit code 0 = everything passed, 1 = something broke.
 """
@@ -44,18 +56,42 @@ if HERE not in sys.path:
 
 import mock_openai  # noqa: E402
 
+# Whether a failure of a check that talks to Microsoft's endpoint should fail
+# the run. Locally that is what you want; on CI it is not, because the runner's
+# datacenter IP may simply be refused by the undocumented endpoint, which says
+# nothing about this code.
+REQUIRE_LIVE = os.environ.get("TTS_SMOKE_REQUIRE_LIVE", "1").strip().lower() \
+    not in ("0", "false", "no", "off")
+
 FAILURES = []
+WARNINGS = []
 SKIPS = []
 
 
-def report(name, ok, detail=""):
-    prefix = "[ok]  " if ok else "[FAIL]"
+def report(name, ok, detail="", live=False):
+    """Record one check.
+
+    Pass ``live=True`` for anything that hits the network. When live checks are
+    advisory (``TTS_SMOKE_REQUIRE_LIVE=0``) such a failure is printed as
+    ``[warn]`` and recorded separately instead of failing the run.
+    """
+    if ok:
+        prefix = "[ok]  "
+    elif live and not REQUIRE_LIVE:
+        prefix = "[warn]"
+    else:
+        prefix = "[FAIL]"
+
     line = "%s %s" % (prefix, name)
     if detail:
         line += "  -> %s" % detail
     print(line, flush=True)
+
     if not ok:
-        FAILURES.append(name)
+        if live and not REQUIRE_LIVE:
+            WARNINGS.append(name)
+        else:
+            FAILURES.append(name)
 
 
 def skip(name, detail=""):
@@ -114,37 +150,43 @@ def check_cli_surface(tmp):
     code, out, err = run_tts("styles")
     report("styles lists voice presets", code == 0 and "女声-温柔" in out, tail(err))
 
+    # Everything above is offline. These two need the voice list, which comes
+    # from Microsoft.
     code, out, err = run_tts("voices", "--lang", "zh")
     zh_count = len(re.findall(r"^zh-", out, re.M))
     report(
         "voices --lang zh returns Chinese voices",
         code == 0 and zh_count >= 10,
         "%d 个中文音色" % zh_count,
+        live=True,
     )
 
     code, out, err = run_tts("doctor")
-    report("doctor reports a healthy environment", code == 0 and "一切就绪" in out, tail(err))
+    report("doctor reports a healthy environment",
+           code == 0 and "一切就绪" in out, tail(err), live=True)
 
 
 def check_edge_backend(tmp):
-    """The default backend, against the live service."""
+    """The default backend, against the live service. Live."""
     mp3 = os.path.join(tmp, "one.mp3")
     code, out, err = run_tts(
         "say", "--text", "端到端冒烟测试，验证配音功能正常。",
         "--style", "女声-活泼", "--out", mp3, "--srt",
     )
     size = os.path.getsize(mp3) if os.path.exists(mp3) else 0
-    report("edge: synthesizes audio", code == 0 and size > 1024, "%d bytes" % size)
+    report("edge: synthesizes audio", code == 0 and size > 1024, "%d bytes" % size, live=True)
 
     cues = srt_cues(os.path.splitext(mp3)[0] + ".srt")
     report(
         "edge: --srt emits word-aligned cues",
         len(cues) >= 1 and all(c[1] > c[0] for c in cues),
         "%d 条字幕" % len(cues),
+        live=True,
     )
 
 
 def check_batch(tmp):
+    """Batch + merge + combined subtitles, against the live service. Live."""
     import tts
 
     lines = os.path.join(tmp, "lines.txt")
@@ -160,13 +202,13 @@ def check_batch(tmp):
     )
     parts = sorted(glob.glob(os.path.join(outdir, "0*.mp3")))
     report("batch writes one file per segment", code == 0 and len(parts) == 2,
-           "%d 段" % len(parts))
+           "%d 段" % len(parts), live=True)
 
     report("batch --merge produces a merged file",
-           os.path.exists(merged) and os.path.getsize(merged) > 1024)
+           os.path.exists(merged) and os.path.getsize(merged) > 1024, live=True)
 
     all_srt = os.path.join(outdir, "all.srt")
-    report("batch --srt produces a combined srt", os.path.exists(all_srt))
+    report("batch --srt produces a combined srt", os.path.exists(all_srt), live=True)
 
     if not (parts and os.path.exists(merged)):
         return
@@ -181,6 +223,7 @@ def check_batch(tmp):
         "merge duration matches %s" % ("ffmpeg path" if has_ffmpeg else "concat fallback"),
         abs(d_merged - expected) < 0.4,
         "实际 %.2fs / 预期 %.2fs%s" % (d_merged, expected, "" if has_ffmpeg else "（无 ffmpeg）"),
+        live=True,
     )
 
     combined = srt_cues(all_srt)
@@ -189,6 +232,7 @@ def check_batch(tmp):
         "combined srt stays aligned with merged audio",
         bool(combined) and 0 < last_end <= d_merged and (d_merged - last_end) < 2.5,
         "末条字幕 %.2fs / 音频 %.2fs" % (last_end, d_merged),
+        live=True,
     )
 
 
@@ -258,6 +302,9 @@ def main():
 
     print("xm-tts-voiceover smoke test")
     print("=" * 54)
+    if not REQUIRE_LIVE:
+        print("联网检查仅警告（TTS_SMOKE_REQUIRE_LIVE=0）—— 接口被限流不挂构建")
+        print("=" * 54)
 
     tmp = tempfile.mkdtemp(prefix="tts-smoke-")
     try:
@@ -271,10 +318,17 @@ def main():
 
     print("=" * 54)
     if FAILURES:
-        print("%d 项失败：" % len(FAILURES))
+        print("%d 项失败（硬门槛）：" % len(FAILURES))
         for name in FAILURES:
             print("  - %s" % name)
         return 1
+    if WARNINGS:
+        print("代码检查全部通过；%d 项联网检查未通过（按配置视为警告，不影响退出码）："
+              % len(WARNINGS))
+        for name in WARNINGS:
+            print("  - %s" % name)
+        print("如需让联网检查也当硬性门槛，去掉 TTS_SMOKE_REQUIRE_LIVE=0 再跑。")
+        return 0
     if SKIPS:
         print("全部通过（跳过 %d 项：%s）" % (len(SKIPS), "、".join(SKIPS)))
         return 0

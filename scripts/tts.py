@@ -43,7 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from providers import ProviderError, get as get_provider  # noqa: E402
 from providers import describe_all, names as provider_names  # noqa: E402
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 DEFAULT_STYLE = "女声-温柔"
 
