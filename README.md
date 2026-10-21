@@ -244,10 +244,15 @@ backend — are a hard gate: any failure fails the run. **Live** checks — real
 synthesis, `voices --lang zh`, `doctor`, and batch/merge through the Edge backend —
 talk to the live Microsoft endpoint. They are normally required too, but if you set
 `TTS_SMOKE_REQUIRE_LIVE=0` a live-service failure downgrades to a `[warn]` and the
-run still exits 0. This is exactly what `ci.yml` does: GitHub's runner IPs sit behind
-datacenter ranges the endpoint may refuse, so CI treats a live outage there as a
-warning rather than a code defect. Real outages are caught instead by the daily
-`health.yml` probe, which files an issue against the live service itself.
+run still exits 0. `ci.yml` sets that flag, because the undocumented endpoint is
+occasionally throttled and a live hiccup there is not a code defect; real outages are
+caught instead by the daily `health.yml` probe.
+
+One more thing the system-native backend needs: **ffmpeg**, since every OS engine
+emits WAV/AIFF and the backend normalises it to mp3. If ffmpeg is missing the smoke
+test **skips** the `system: synthesizes offline` check rather than failing — an absent
+optional dependency is not a bug. CI installs ffmpeg on Linux so at least one job still
+exercises that path end to end; macOS and Windows runners skip it.
 
 Two workflows back this up:
 

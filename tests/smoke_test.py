@@ -286,10 +286,16 @@ def check_system_backend(tmp):
     report("system: lists OS voices", "VOICE" in out, "")
 
     mp3 = os.path.join(tmp, "sys.mp3")
-    code, out, err = run_tts("say", "--provider", "system",
-                             "--text", "offline smoke test", "--out", mp3)
-    size = os.path.getsize(mp3) if os.path.exists(mp3) else 0
-    report("system: synthesizes offline", code == 0 and size > 1024, "%d bytes" % size)
+    if shutil.which("ffmpeg") is None:
+        # The OS engines emit WAV/AIFF; without ffmpeg the backend cannot
+        # produce mp3 at all. That is a missing optional dependency, not a
+        # code defect, so skip instead of failing the build.
+        skip("system: synthesizes offline", "未安装 ffmpeg，system 后端无法转 mp3")
+    else:
+        code, out, err = run_tts("say", "--provider", "system",
+                                 "--text", "offline smoke test", "--out", mp3)
+        size = os.path.getsize(mp3) if os.path.exists(mp3) else 0
+        report("system: synthesizes offline", code == 0 and size > 1024, "%d bytes" % size)
 
     code, out, err = run_tts("say", "--provider", "system", "--text", "no subs",
                              "--srt", "--out", os.path.join(tmp, "sys_srt.mp3"))

@@ -15,6 +15,7 @@ outputs/
 
 # CI scratch
 diagnostics.md
+*.log
 
 # keep any checked-in examples
 !examples/**/*.mp3

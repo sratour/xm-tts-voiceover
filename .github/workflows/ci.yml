@@ -36,10 +36,10 @@ jobs:
       # The CLI prints Chinese; force UTF-8 so piped output is identical
       # on every platform instead of following the Windows code page.
       PYTHONUTF8: "1"
-      # GitHub runners sit behind datacenter IPs that Microsoft's undocumented
-      # endpoint may refuse; a live-service failure there is not a code defect,
-      # so live checks are advisory here. Real outages are caught by the health
-      # workflow.
+      # The Edge endpoint is undocumented and occasionally throttles or refuses
+      # datacenter IPs; a live failure here is not necessarily a code defect, so
+      # live checks are advisory. Real outages are caught by the daily health
+      # workflow instead.
       TTS_SMOKE_REQUIRE_LIVE: "0"
 
     steps:
@@ -53,11 +53,14 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
-      # Windows ships SAPI and macOS ships `say`, so only Linux needs a package
-      # for the system-voice backend to be testable here.
-      - name: Install espeak-ng (Linux system-voice backend)
+      # Windows ships SAPI and macOS ships `say`, so only Linux needs a voice
+      # engine. ffmpeg is needed by the system backend everywhere (it converts
+      # the engine's WAV/AIFF to mp3); installing it on Linux lets at least one
+      # job exercise that path end to end. Elsewhere the smoke test skips the
+      # synthesis check when ffmpeg is absent.
+      - name: Install Linux audio tools (espeak-ng + ffmpeg)
         if: runner.os == 'Linux'
-        run: sudo apt-get update -qq && sudo apt-get install -y espeak-ng
+        run: sudo apt-get update -qq && sudo apt-get install -y espeak-ng ffmpeg
 
       # compileall instead of an explicit file list or a *.py glob: PowerShell
       # does not expand wildcards for native commands, and this keeps working

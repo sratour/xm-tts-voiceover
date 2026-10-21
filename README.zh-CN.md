@@ -220,7 +220,9 @@ zh-CN-XiaoxiaoNeural
 python tests/smoke_test.py
 ```
 
-检查分两档。**离线**检查——CLI 各命令、后端注册表、对本地 mock 的 OpenAI 后端、系统自带后端——是硬门槛，任何一项挂了整个测试就挂。**联网**检查——edge 真实合成、`voices --lang zh`、`doctor`、以及走 edge 后端的批量/合并——会真的去打微软的线上接口。它们默认也是必过的，但如果你设 `TTS_SMOKE_REQUIRE_LIVE=0`，联网失败会降级成 `[warn]`，测试仍然以 0 退出。`ci.yml` 就是这么干的：GitHub runner 的 IP 属于数据中心段，接口可能直接拒绝，所以 CI 把「线上挂了」当成警告而非代码缺陷。真正的线上故障改由每天跑的 `health.yml` 探针捕获——它会针对线上服务本身开 issue。
+检查分两档。**离线**检查——CLI 各命令、后端注册表、对本地 mock 的 OpenAI 后端、系统自带后端——是硬门槛，任何一项挂了整个测试就挂。**联网**检查——edge 真实合成、`voices --lang zh`、`doctor`、以及走 edge 后端的批量/合并——会真的去打微软的线上接口。它们默认也是必过的，但如果你设 `TTS_SMOKE_REQUIRE_LIVE=0`，联网失败会降级成 `[warn]`，测试仍然以 0 退出。`ci.yml` 设了这个开关：非官方接口偶尔会限流，线上抖一下不算代码缺陷；真正的线上故障由每天跑的 `health.yml` 探针捕获——它会针对线上服务本身开 issue。
+
+系统自带后端还多一个前提：**ffmpeg**。三种系统引擎都输出 WAV/AIFF，后端要靠 ffmpeg 转成 mp3。**没有 ffmpeg 时，冒烟测试会跳过 `system: synthesizes offline` 这一项，而不是判失败**——缺一个可选依赖不算 bug。CI 在 Linux 上装了 ffmpeg，所以至少有一个 job 会端到端跑通这条路径；macOS 和 Windows 的 runner 则跳过。
 
 配套两个 workflow：
 

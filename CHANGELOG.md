@@ -8,20 +8,19 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- **CI now survives the live endpoint refusing GitHub's runner IPs.** The smoke test
-  was a single hard gate where *every* check — including live Edge synthesis — had to
-  pass, so all five matrix jobs failed on CI even though the code was fine.
-- The smoke test now splits into two tiers. **Offline** checks (CLI surface, backend
-  registry, the OpenAI backend against the local mock server, the system-native
-  backend) remain a hard gate. **Live** checks (real Edge synthesis, `voices --lang zh`,
-  `doctor`, and Edge batch/merge) can be made advisory with
-  `TTS_SMOKE_REQUIRE_LIVE=0`, which downgrades a live-service failure to a `[warn]`
-  and exits 0 instead of failing.
-- `ci.yml` sets `TTS_SMOKE_REQUIRE_LIVE=0` and `PYTHONUTF8=1`. Real outages are still
-  caught by the daily `health.yml` probe, which files an issue against the live
-  service itself.
-- Updated the Testing-and-CI sections of both READMEs to document the two-tier
-  behaviour and the `TTS_SMOKE_REQUIRE_LIVE` switch.
+- **CI failed on every platform because the runners ship no `ffmpeg`.** The
+  system-native backend needs ffmpeg to convert the engine's WAV/AIFF output to
+  mp3, so `system: synthesizes offline` produced a 0-byte file and the hard gate
+  failed — on Ubuntu, macOS and Windows alike. The smoke test now **skips** that
+  one check when ffmpeg is absent (a missing optional dependency is not a code
+  defect), and CI installs ffmpeg on Linux so at least one job still exercises the
+  path end to end.
+- The smoke test's live checks (real Edge synthesis, `voices --lang zh`, `doctor`,
+  Edge batch/merge) are now advisory under `TTS_SMOKE_REQUIRE_LIVE=0`, which CI
+  sets: the undocumented endpoint is occasionally throttled, and a real outage is
+  the daily `health.yml` probe's job. Locally they stay mandatory.
+- Updated the Testing-and-CI sections of both READMEs to document the two tiers and
+  the ffmpeg skip.
 
 ## [1.1.0] - 2026-10-14
 
