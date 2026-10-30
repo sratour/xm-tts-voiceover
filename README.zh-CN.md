@@ -2,7 +2,7 @@
 
 一个 [Agent Skill](https://code.claude.com/docs/en/skills)：把文字合成为 **mp3 配音**，并自动导出**与音频精确对齐的 SRT 字幕**。
 
-**三种后端，`--provider` 切换**：微软 Edge 神经语音（默认，免费、无需 Key）、任意 **OpenAI 兼容**接口、或**操作系统自带**引擎（完全离线）。
+**四种后端，`--provider` 切换**：微软 Edge 神经语音（默认，免费、无需 Key）、**Azure 官方语音**（需 Key，公开神经音色最全）、任意 **OpenAI 兼容**接口、或**操作系统自带**引擎（完全离线）。
 
 [![CI](https://github.com/sratour/xm-tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/sratour/xm-tts-voiceover/actions/workflows/ci.yml)
 [![服务健康](https://github.com/sratour/xm-tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/sratour/xm-tts-voiceover/actions/workflows/health.yml)
@@ -47,6 +47,8 @@
 | 后端 | 费用 | 要 Key | 离线 | 字幕 | 覆盖范围 |
 |---|---|---|---|---|---|
 | `edge`（默认） | 免费 | ❌ | ❌ | ✅ 词级 | 300+ 音色，140+ 语言/地区 |
+| `edge` *（默认）* | 免费 | ❌ | ❌ | ✅ 词级 | 300+ 音色、140+ 语言/地区 |
+| `azure` | 有免费额度，超出计费 | ✅ | ❌ | ❌ | 微软官方神经音色全量，含 48kHz 高保真 |
 | `openai` | 视服务而定 | ✅ | 视服务而定 | ❌ | OpenAI、LocalAI、Fish Speech、Kokoro-FastAPI、GPT-SoVITS、云厂商…… |
 | `system` | 免费 | ❌ | **✅** | ❌ | Windows SAPI、macOS `say`、Linux espeak-ng |
 
@@ -58,6 +60,30 @@ python3 scripts/tts.py providers   # 看这台机器上有哪些能用
 
 无需 Key、无需注册，而且是唯一提供**词级时间戳**的后端 —— 精确对齐的字幕靠它实现。
 它也是上面那条免责声明所针对的后端。
+
+### `azure` —— 微软官方语音（需 Key）
+
+和 `edge` 是同一套神经音色，但走**官方文档化 API**：稳定、可商用，代价是要 Key 和区域，
+超出免费额度按字符计费（标准神经语音前 12 个月每月 50 万字符免费）。
+
+```bash
+export AZURE_SPEECH_KEY=你的Key
+export AZURE_SPEECH_REGION=eastasia
+
+python3 scripts/tts.py say --provider azure --voice zh-CN-XiaoxiaoNeural \
+  --text "你好" --out out.mp3
+python3 scripts/tts.py voices --provider azure --lang zh
+```
+
+| 参数 | 环境变量 | 说明 |
+|---|---|---|
+| `--azure-key` | `AZURE_SPEECH_KEY`（也认 `--api-key` / `TTS_API_KEY`） | 必填 |
+| `--azure-region` | `AZURE_SPEECH_REGION` | 必填，如 `eastasia` |
+| `--azure-endpoint` | `AZURE_SPEECH_ENDPOINT` | 可选完整端点覆盖；**Azure 中国区**填 `https://<region>.tts.speech.azure.cn` |
+
+音色用 ShortName（`zh-CN-XiaoxiaoNeural` 这类），`--style` 预设别名与 `edge` 完全一致。
+输出 24kHz/48kbps mp3，`batch --merge` 可与其他后端混用。**不支持 `--srt`**（REST 只回整段音频）。
+只对**公开预置音色**有效——别人训练的 Custom Neural Voice 调不到。
 
 ### `openai` —— 接入你自己的服务
 
@@ -103,7 +129,7 @@ python3 scripts/tts.py say --provider system --text "完全离线合成。" --ou
 
 ## 特性
 
-- **三种后端，一套命令。** 默认免费 Edge 语音；换自己的接口或彻底离线，其他用法都不用改。
+- **四种后端，一套命令。** 默认免费 Edge 语音；想要官方 API 用 Azure，换自己的接口或彻底离线，其他用法都不用改。
 - **字幕与音频精确对齐**（edge 后端）：SRT 时间轴取自引擎真实的词边界事件，不是估算。
 - **批量 + 逐段指定音色**：有声书对话、多角色脚本可以每句换一个声音。
 - **合并带真实停顿**：`--merge` 会在段间插入真正的静音，合并字幕与音频保持同一时间轴。
@@ -172,11 +198,12 @@ python3 scripts/tts.py styles
 
 | 参数 | 适用 | 含义 |
 |---|---|---|
-| `--provider` | 全部 | 后端：`edge` / `openai` / `system`（默认 `edge`，也可用 `TTS_PROVIDER`） |
+| `--provider` | 全部 | 后端：`edge` / `azure` / `openai` / `system`（默认 `edge`，也可用 `TTS_PROVIDER`） |
 | `--voice` | `say`、`batch` | 音色名，如 `zh-CN-YunxiNeural` / `nova`。**它决定了语言。** |
 | `--style` | `say`、`batch` | 友好别名，如 `女声-温柔`、`en-female` |
 | `--rate` / `--volume` / `--pitch` | `say`、`batch` | 相对值：`+25%`、`-10%`、`+20Hz`（音量/音调仅 edge 支持） |
 | `--api-key` / `--base-url` / `--model` | openai 后端 | 接口凭据与地址，也可走环境变量 |
+| `--azure-key` / `--azure-region` / `--azure-endpoint` | azure 后端 | 微软语音 Key、区域、可选端点，也可走 `AZURE_SPEECH_*` |
 | `--srt` | `say`、`batch` | 同时导出 `.srt` 字幕（仅 edge 等支持词级时间戳的后端） |
 | `--merge` / `--gap` | `batch` | 合并为一个 mp3；段间静音秒数（默认 `0.3`） |
 | `--proxy` | edge | HTTP 代理，如 `http://127.0.0.1:7890` |
@@ -205,13 +232,15 @@ zh-CN-XiaoxiaoNeural
 ## 测试与 CI
 
 这里的测试是**真实联网冒烟测试**，不是打桩的单元测试。因为默认后端依赖一个非官方接口，
-打桩测试只能证明「桩写得对」，永远发现不了服务本身变了。`tests/smoke_test.py` 跑 21 项断言：
+打桩测试只能证明「桩写得对」，永远发现不了服务本身变了。`tests/smoke_test.py` 跑 27 项断言：
 
 - CLI 各命令与后端注册表
 - **真实合成**（edge 后端）+ 词级对齐字幕
 - 批量模式、带停顿的合并、合并字幕对齐
 - **OpenAI 兼容后端对本地 mock 服务**（`tests/mock_openai.py`）—— HTTP 链路、
   错误透传、`--srt` 拒绝都覆盖到了，**不需要真实 API Key**
+- **Azure 后端对本地 mock 服务**（`tests/mock_azure.py`）—— SSML 请求、
+  订阅 Key 鉴权、错误透传，**不需要真实 Azure Key**
 - **系统自带后端**在测试运行的平台上真实执行
 
 自己跑：
@@ -241,7 +270,7 @@ python tests/smoke_test.py
   **用其他后端不会安装它。**
 - **`ffmpeg`** —— 可选，但 `batch --merge`（插入真实停顿）和 `system` 后端（WAV/AIFF 转 mp3）
   需要它。缺失时合并会退化为 MP3 帧拼接。
-- `openai` 后端除标准库外**零依赖**。
+- `openai` 与 `azure` 后端除标准库外**零依赖**；`azure` 额外需要 Speech 的 Key 和区域。
 
 ## 故障排查
 
@@ -258,6 +287,9 @@ python3 scripts/tts.py providers   # 只看后端状态
 | `--srt` 被拒绝 | 该后端不提供词级时间戳。改用 `--provider edge`，或去掉 `--srt`。 |
 | openai 提示没有 Key | 设置 `OPENAI_API_KEY`，或传 `--api-key`。自建服务通常也要随便填一个值。 |
 | openai 返回 HTTP 400 | 服务端拒绝了某个字段。用 `voices --provider openai` 核对 `--voice` 和 `--model`。 |
+| azure 提示没有 Key / 区域 | 设置 `AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION`，或传 `--azure-key` / `--azure-region`。 |
+| azure 返回 HTTP 401 | Key 无效，或区域与资源不匹配。 |
+| azure 返回 HTTP 429 | 超出配额或速率限制，检查 Speech 资源的定价层。 |
 | Linux 上 system 后端不可用 | `apt install espeak-ng`。 |
 | system 后端提示需要 ffmpeg | 装 ffmpeg —— 系统引擎无法直接输出 mp3。 |
 | `edge-tts` 装不上 | 受管或离线环境。手动安装、设 `TTS_NO_AUTO_INSTALL=1`，或改用 `--provider system`。 |

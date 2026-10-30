@@ -1,8 +1,8 @@
 ---
 name: xm-tts-voiceover
-description: "配音 TTS - 把文字合成为语音配音（mp3），并可自动生成同步字幕。当用户需要配音、语音合成、文字转语音、TTS、朗读、旁白、有声书、短视频配音、多音色批量配音、导出字幕时使用。支持三种后端：微软 Edge TTS（默认，免费、无需 Key、有词级时间戳）、任意 OpenAI 兼容接口（OpenAI / LocalAI / Fish Speech / Kokoro-FastAPI / 云厂商，用 --base-url 接入）、系统自带语音（Windows SAPI / macOS say / Linux espeak，完全离线）。可调语速/音量/音调。"
-description_en: "Text-to-speech voiceover that turns text into mp3 narration and time-aligned SRT subtitles. Use for voiceover, TTS, narration, audiobooks, short-video dubbing, batch multi-voice synthesis, or subtitle export. Three pluggable backends: Microsoft Edge neural voices (default; free, no API key, word-level timings), any OpenAI-compatible /v1/audio/speech endpoint, or the OS-native engine for fully offline use."
-version: 1.1.1
+description: "配音 TTS - 把文字合成为语音配音（mp3），并可自动生成同步字幕。当用户需要配音、语音合成、文字转语音、TTS、朗读、旁白、有声书、短视频配音、多音色批量配音、导出字幕时使用。支持四种后端：微软 Edge TTS（默认，免费、无需 Key、有词级时间戳）、Azure 官方语音（需 Key，公开神经音色最全、支持 48kHz 高保真）、任意 OpenAI 兼容接口（OpenAI / LocalAI / Fish Speech / Kokoro-FastAPI / 云厂商，用 --base-url 接入）、系统自带语音（Windows SAPI / macOS say / Linux espeak，完全离线）。可调语速/音量/音调。"
+description_en: "Text-to-speech voiceover that turns text into mp3 narration and time-aligned SRT subtitles. Use for voiceover, TTS, narration, audiobooks, short-video dubbing, batch multi-voice synthesis, or subtitle export. Four pluggable backends: Microsoft Edge neural voices (default; free, no API key, word-level timings), Azure AI Speech (needs a key; the full public neural catalogue), any OpenAI-compatible /v1/audio/speech endpoint, or the OS-native engine for fully offline use."
+version: 1.2.0
 license: MIT
 allowed-tools:
   - Read
@@ -16,15 +16,16 @@ allowed-tools:
 
 把文字合成为配音音频，并可选导出与音频对齐的字幕。
 
-**三种后端，用 `--provider` 切换：**
+**四种后端，用 `--provider` 切换：**
 
 | 后端 | 特点 | 字幕 |
 |---|---|---|
 | `edge`（默认） | 微软 Edge 神经语音。免费、无需 Key、300+ 音色 | ✅ 词级精确 |
+| `azure` | Azure 官方语音（需 Key + 区域）。公开神经音色最全，支持 48kHz 高保真 | ❌ |
 | `openai` | 任意 OpenAI 兼容 `/v1/audio/speech` 接口 | ❌ |
 | `system` | 系统自带引擎（Windows SAPI / macOS `say` / Linux espeak-ng），完全离线 | ❌ |
 
-> **只有 `edge` 能出字幕。** 另外两个后端只返回整段音频，没有词的位置信息 ——
+> **只有 `edge` 能出字幕。** 其余后端只返回整段音频，没有词的位置信息 ——
 > 这时传 `--srt` 会明确报错，而不是生成一份时间轴瞎猜的字幕。
 
 ## 运行方式
@@ -74,7 +75,32 @@ python3 tts.py doctor             # 更详细的环境自检
 ```
 
 切换方式（优先级从高到低）：`--provider` 参数 → 环境变量 `TTS_PROVIDER` → 默认 `edge`。
-别名也认：`oai` / `openai-compatible` → openai，`os` / `native` / `sapi` / `say` / `espeak` → system。
+别名也认：`oai` / `openai-compatible` → openai，`os` / `native` / `sapi` / `say` / `espeak` → system，
+`azure-tts` / `msazure` → azure。
+
+### azure：微软官方语音（需 Key）
+
+和 `edge` 用同一套神经音色，但走的是**官方文档化 API**，稳定、可商用，代价是要 Key 和区域，
+超出免费额度按字符计费（标准神经语音前 12 个月每月 50 万字符免费）。
+
+```bash
+export AZURE_SPEECH_KEY=你的Key
+export AZURE_SPEECH_REGION=eastasia      # 资源所在区域，如 eastasia / eastus
+
+python3 tts.py say --provider azure --voice zh-CN-XiaoxiaoNeural --text "你好" --out out.mp3
+python3 tts.py voices --provider azure --lang zh     # 查公开音色
+```
+
+| 参数 | 环境变量 | 说明 |
+|---|---|---|
+| `--azure-key` | `AZURE_SPEECH_KEY`（也认 `--api-key` / `TTS_API_KEY`） | 必填 |
+| `--azure-region` | `AZURE_SPEECH_REGION` | 必填，如 `eastasia` |
+| `--azure-endpoint` | `AZURE_SPEECH_ENDPOINT` | 可选，覆盖完整端点；**Azure 中国区**填 `https://<region>.tts.speech.azure.cn` |
+
+- 音色用 ShortName（`zh-CN-XiaoxiaoNeural` 这类），预设别名与 `edge` 完全一致。
+- 输出 24kHz/48kbps mp3，和 `edge` 一致，`batch --merge` 可直接混用。
+- **不支持 `--srt`**：REST 只回整段音频，词级时间戳要 Speech SDK 才有。
+- 只对**公开预置音色**有效；别人训练的 Custom Neural Voice（私有音色）调不到。
 
 ### openai：接入任意 OpenAI 兼容接口
 
@@ -257,18 +283,19 @@ python tts.py voices             # 全部 322 个
 - **`edge` 后端**：需要 `edge-tts`（首次使用该后端时自动安装，可用 `TTS_NO_AUTO_INSTALL=1` 关闭）。
   用其他后端不会安装它。
 - **`system` 后端**：需要 ffmpeg（转 mp3），零 Python 依赖。
+- **`azure` 后端**：零额外依赖（标准库发请求），需要 Azure Speech 的 Key + 区域。
 - **`openai` 后端**：零额外依赖（用标准库发请求），需要你自己的 Key 或自建服务。
 - **`batch --merge`**：需要 ffmpeg 插入段间停顿；缺失时退化为 MP3 帧拼接。
 
 > **`edge` 后端依赖的 `edge-tts` 走的是微软 Edge 浏览器「大声朗读」的内部接口，
 > 并非微软公开文档化或授权的 API。** 该接口可能被随时变更或停用，导致合成失败；
 > 请勿将其视为微软官方能力，也不要把「永久免费」当作承诺。
-> 需要正式授权的场景请改用 `--provider openai` 接 Azure/OpenAI 官方服务，或自建。
+> 需要正式授权的场景请改用 `--provider azure`（微软官方语音）或 `--provider openai` 接 OpenAI 官方服务，或自建。
 
 ## 注意
 
 - 输出是标准 mp3，可直接导入剪映 / Premiere / 剪映专业版做视频配音。
 - `--srt` 生成的字幕已按音频时间轴对齐，可直接拖进剪辑软件当字幕轨。
-- 三个后端都输出 24 kHz 单声道 mp3，所以 `batch --merge` 与字幕时间轴算法跨后端通用。
+- `edge` / `azure` / `system` 默认都输出 24 kHz 单声道 mp3，所以 `batch --merge` 与字幕时间轴算法跨后端通用。
 - `edge` 后端需要能访问微软语音服务；若在企业网络下失败，先跑 `doctor` 自检，
   再尝试 `--proxy`。

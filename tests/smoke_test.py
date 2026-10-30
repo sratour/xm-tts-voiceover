@@ -54,6 +54,7 @@ if SCRIPTS not in sys.path:
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+import mock_azure  # noqa: E402
 import mock_openai  # noqa: E402
 
 # Whether a failure of a check that talks to Microsoft's endpoint should fail
@@ -276,6 +277,47 @@ def check_openai_backend(tmp):
         server.shutdown()
 
 
+def check_azure_backend(tmp):
+    """Exercise the Azure REST plumbing against a local mock, so no key is required."""
+    server, base_url = mock_azure.start()
+    common = ["--provider", "azure", "--azure-key", "test-key", "--azure-endpoint", base_url]
+    try:
+        code, out, err = run_tts("voices", *common)
+        report("azure: lists voices from the server",
+               code == 0 and "zh-CN-XiaoxiaoNeural" in out, tail(err))
+
+        code, out, err = run_tts("styles", *common)
+        report("azure: styles shows the Chinese preset set",
+               code == 0 and "女声-温柔" in out, tail(err))
+
+        mp3 = os.path.join(tmp, "az.mp3")
+        code, out, err = run_tts("say", *common, "--voice", "zh-CN-XiaoxiaoNeural",
+                                 "--text", "你好", "--out", mp3)
+        report("azure: synthesizes via /cognitiveservices/v1",
+               code == 0 and os.path.exists(mp3) and os.path.getsize(mp3) > 0,
+               "%d bytes" % (os.path.getsize(mp3) if os.path.exists(mp3) else 0))
+
+        code, out, err = run_tts("say", *common, "--voice", "nope",
+                                 "--text", "你好", "--out", os.path.join(tmp, "azbad.mp3"))
+        report("azure: surfaces the server's error message",
+               code != 0 and "unknown voice" in err, tail(err))
+
+        code, out, err = run_tts("say", *common, "--voice", "zh-CN-XiaoxiaoNeural",
+                                 "--text", "你好", "--srt",
+                                 "--out", os.path.join(tmp, "azsrt.mp3"))
+        report("azure: --srt is refused instead of faking timings",
+               code != 0 and "--provider edge" in err, tail(err))
+
+        # A key is genuinely required -- this must not silently succeed.
+        code, out, err = run_tts("say", "--provider", "azure",
+                                 "--azure-endpoint", base_url, "--text", "你好",
+                                 "--out", os.path.join(tmp, "aznokey.mp3"),
+                                 env={"AZURE_SPEECH_KEY": "", "TTS_API_KEY": ""})
+        report("azure: refuses to run without a key", code != 0, tail(err))
+    finally:
+        server.shutdown()
+
+
 def check_system_backend(tmp):
     """The OS-native backend, if this platform offers one."""
     code, out, err = run_tts("voices", "--provider", "system")
@@ -318,6 +360,7 @@ def main():
         check_edge_backend(tmp)
         check_batch(tmp)
         check_openai_backend(tmp)
+        check_azure_backend(tmp)
         check_system_backend(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

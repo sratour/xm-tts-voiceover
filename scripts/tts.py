@@ -6,6 +6,8 @@ Default backend is Microsoft Edge TTS: free, no API key, and the only one that
 returns word-level timings (which is what makes time-aligned subtitles possible).
 Alternatives:
 
+  * ``--provider azure``   Azure AI Speech -- the official, documented API with
+    the full prebuilt voice catalogue. Needs a key and a region.
   * ``--provider openai``  any OpenAI-compatible ``/v1/audio/speech`` endpoint --
     OpenAI itself, LocalAI, Fish Speech, Kokoro-FastAPI, cloud vendors, ...
   * ``--provider system``  the OS engine (Windows SAPI / macOS ``say`` /
@@ -17,6 +19,7 @@ Usage:
   python tts.py voices [--lang zh] [--provider openai]
   python tts.py styles [--provider openai]
   python tts.py say --text "你好，欢迎收听" --style 女声-温柔 --out out.mp3 --srt
+  python tts.py say --text "你好" --provider azure --voice zh-CN-XiaoxiaoNeural --out out.mp3
   python tts.py say --text "Hello" --provider openai --voice nova --out out.mp3
   python tts.py say --text "完全离线" --provider system --out out.mp3
   python tts.py batch --file lines.json --outdir ./audio --merge final.mp3
@@ -43,7 +46,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from providers import ProviderError, get as get_provider  # noqa: E402
 from providers import describe_all, names as provider_names  # noqa: E402
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 
 DEFAULT_STYLE = "女声-温柔"
 
@@ -183,6 +186,9 @@ def _make_provider(args):
         "base_url": getattr(args, "base_url", None),
         "model": getattr(args, "model", None),
         "proxy": getattr(args, "proxy", None),
+        "azure_key": getattr(args, "azure_key", None),
+        "azure_region": getattr(args, "azure_region", None),
+        "azure_endpoint": getattr(args, "azure_endpoint", None),
     }
     try:
         provider = get_provider(getattr(args, "provider", None), options)
@@ -477,21 +483,28 @@ def add_provider_flags(sp):
                     help="OpenAI 兼容接口地址；也可用环境变量 OPENAI_BASE_URL / TTS_BASE_URL")
     sp.add_argument("--model",
                     help="模型名；也可用环境变量 TTS_MODEL")
+    sp.add_argument("--azure-key",
+                    help="Azure 语音 Key；也可用环境变量 AZURE_SPEECH_KEY")
+    sp.add_argument("--azure-region",
+                    help="Azure 区域，如 eastasia；也可用环境变量 AZURE_SPEECH_REGION")
+    sp.add_argument("--azure-endpoint",
+                    help="完整端点覆盖（Azure 中国区用 https://<region>.tts.speech.azure.cn）；"
+                         "也可用环境变量 AZURE_SPEECH_ENDPOINT")
 
 
 def add_voice_flags(sp):
     sp.add_argument("--voice", help="音色名，如 zh-CN-YunxiNeural / nova")
     sp.add_argument("--style", help="音色预设别名，如 女声-温柔 / 男声-新闻")
     sp.add_argument("--rate", default="+0%", help="语速，如 +25%% / -10%%")
-    sp.add_argument("--volume", default="+0%", help="音量，如 +30%%（仅 edge 支持）")
-    sp.add_argument("--pitch", default="+0Hz", help="音调，如 +20Hz（仅 edge 支持）")
+    sp.add_argument("--volume", default="+0%", help="音量，如 +30%%（仅 edge / azure 支持）")
+    sp.add_argument("--pitch", default="+0Hz", help="音调，如 +20Hz（仅 edge / azure 支持）")
     sp.add_argument("--proxy", help="HTTP 代理，如 http://127.0.0.1:7890（仅 edge 支持）")
 
 
 def build_parser():
     p = argparse.ArgumentParser(
         prog="tts.py",
-        description="配音 TTS - 文字转语音配音，支持 Edge TTS / OpenAI 兼容接口 / 系统语音",
+        description="配音 TTS - 文字转语音配音，支持 Edge TTS / Azure 语音 / OpenAI 兼容接口 / 系统语音",
     )
     p.add_argument("--version", action="version",
                    version="xm-tts-voiceover %s" % __version__)

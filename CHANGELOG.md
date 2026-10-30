@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-10-21
+
+### Added
+
+- **`azure` backend** — the official Azure AI Speech REST API. Unlike the free
+  `edge` backend this is a documented, supported service: it needs a subscription
+  key and a region, and in return exposes the full prebuilt neural catalogue,
+  including 48 kHz high-fidelity models. Configure with `--azure-key` /
+  `AZURE_SPEECH_KEY`, `--azure-region` / `AZURE_SPEECH_REGION`, and an optional
+  `--azure-endpoint` override for Azure China. The `--style` aliases are identical
+  to `edge`'s, because the ShortNames are the same.
+- `tests/mock_azure.py` — a local Azure-shaped server, so the SSML request,
+  subscription-key auth and error propagation are covered without a real key.
+- The smoke test gained six Azure checks (27 in total).
+
+### Changed
+
+- `--volume` / `--pitch` now also work on the `azure` backend (through SSML
+  `<prosody>`), not just `edge`.
+
+### Notes
+
+- `azure` does not support `--srt`: the REST surface returns audio only, and word
+  timings would require the Speech SDK.
+- Only **public prebuilt** voices are reachable; a Custom Neural Voice trained by
+  another account cannot be called.
+
 ## [1.1.1] - 2026-10-15
 
 ### Fixed

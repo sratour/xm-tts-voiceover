@@ -30,6 +30,10 @@ ALIASES = {
     "espeak": "system",
     "microsoft": "edge",
     "msedge": "edge",
+    "azure-tts": "azure",
+    "azure_tts": "azure",
+    "msazure": "azure",
+    "microsoft-azure": "azure",
 }
 
 _REGISTRY = {}
@@ -45,11 +49,13 @@ def _load():
     global _LOADED
     if _LOADED:
         return
+    from .azure import AzureProvider
     from .edge import EdgeProvider
     from .openai_compat import OpenAICompatProvider
     from .system import SystemProvider
 
     register(EdgeProvider)
+    register(AzureProvider)
     register(OpenAICompatProvider)
     register(SystemProvider)
     _LOADED = True

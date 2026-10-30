@@ -2,7 +2,7 @@
 
 An [Agent Skill](https://code.claude.com/docs/en/skills) that turns text into **mp3 voiceover with time-aligned SRT subtitles** — for AI agents that support the `SKILL.md` convention.
 
-Three pluggable backends: Microsoft Edge neural voices (default — free, no API key), any **OpenAI-compatible** `/v1/audio/speech` endpoint, or your **operating system's** own engine for fully offline use.
+Four pluggable backends: Microsoft Edge neural voices (default — free, no API key), **Azure AI Speech** (the official, documented API; needs a key), any **OpenAI-compatible** `/v1/audio/speech` endpoint, or your **operating system's** own engine for fully offline use.
 
 [![CI](https://github.com/sratour/xm-tts-voiceover/actions/workflows/ci.yml/badge.svg)](https://github.com/sratour/xm-tts-voiceover/actions/workflows/ci.yml)
 [![Service health](https://github.com/sratour/xm-tts-voiceover/actions/workflows/health.yml/badge.svg)](https://github.com/sratour/xm-tts-voiceover/actions/workflows/health.yml)
@@ -48,6 +48,7 @@ Pick one with `--provider`, or set `TTS_PROVIDER`. Default is `edge`.
 | Backend | Cost | Key | Offline | Subtitles | Covers |
 |---|---|---|---|---|---|
 | `edge` *(default)* | Free | — | No | ✅ word-level | 300+ voices, 140+ locales |
+| `azure` | Free tier, then paid | Required | No | ❌ | The official Microsoft neural catalogue, incl. 48 kHz high-fidelity |
 | `openai` | Varies | Required | Varies | ❌ | OpenAI, LocalAI, Fish Speech, Kokoro-FastAPI, GPT-SoVITS, cloud vendors, … |
 | `system` | Free | — | **Yes** | ❌ | Windows SAPI, macOS `say`, Linux espeak-ng |
 
@@ -60,6 +61,33 @@ python3 scripts/tts.py providers   # what's available on this machine?
 No key, no signup, and the only backend that reports word-level timings, which is
 what makes precisely aligned subtitles possible. It is also the one with the
 disclaimer above attached to it.
+
+### `azure` — the official Microsoft API
+
+The same neural voices as `edge`, but through a **documented, supported API**. You
+need a Speech resource: a key and a region. The free tier covers 500k characters a
+month for 12 months on standard neural voices.
+
+```bash
+export AZURE_SPEECH_KEY=your-key
+export AZURE_SPEECH_REGION=eastasia
+
+python3 scripts/tts.py say --provider azure --voice zh-CN-XiaoxiaoNeural \
+  --text "Hello" --out out.mp3
+python3 scripts/tts.py voices --provider azure --lang zh
+```
+
+| Flag | Environment | Notes |
+|---|---|---|
+| `--azure-key` | `AZURE_SPEECH_KEY` (also `--api-key` / `TTS_API_KEY`) | Required |
+| `--azure-region` | `AZURE_SPEECH_REGION` | Required, e.g. `eastasia` |
+| `--azure-endpoint` | `AZURE_SPEECH_ENDPOINT` | Optional full override; **Azure China** uses `https://<region>.tts.speech.azure.cn` |
+
+Voices are named by their ShortName (`zh-CN-XiaoxiaoNeural`), and the `--style`
+aliases are identical to `edge`'s. Output is 24 kHz mono 48 kbps mp3, so `batch
+--merge` can mix it with other backends. `--srt` is not available: the REST surface
+returns audio only. Only **public prebuilt** voices work — a Custom Neural Voice
+trained by someone else cannot be called.
 
 ### `openai` — bring your own endpoint
 
@@ -109,8 +137,8 @@ would be needed to do better, which is a different order of work.
 
 ## Features
 
-- **Three backends, one CLI.** Free Edge voices by default; plug in your own
-  endpoint or go fully offline without changing anything else.
+- **Four backends, one CLI.** Free Edge voices by default; go official with Azure,
+  plug in your own endpoint, or go fully offline without changing anything else.
 - **Time-aligned subtitles** on the Edge backend. SRT cues come from the engine's
   real word-boundary events, not estimates.
 - **Batch with per-segment voices.** Give each line its own voice/rate for dialogue
@@ -208,7 +236,8 @@ zh-CN-XiaoxiaoNeural
 ```
 
 The other backends name their voices differently (`nova` on OpenAI, OS-specific
-names on `system`). Run `voices --provider <name>` to see what is available.
+names on `system`); `azure` uses the same ShortNames as `edge`. Run
+`voices --provider <name>` to see what is available.
 
 Two gotchas worth knowing:
 
@@ -230,6 +259,8 @@ runs 21 checks end to end:
 - the **OpenAI-compatible backend against a local mock server** (`tests/mock_openai.py`),
   so the HTTP plumbing, error propagation, and the `--srt` refusal are covered
   without needing a real API key
+- the **Azure backend against a local mock server** (`tests/mock_azure.py`), covering
+  the SSML request, subscription-key auth, and error propagation — no Azure key needed
 - the **OS-native backend** for real on whichever platform the test runs on
 
 Run it yourself:
@@ -239,8 +270,9 @@ python tests/smoke_test.py
 ```
 
 The checks split into two tiers. **Offline** checks — the CLI surface, the backend
-registry, the OpenAI backend against the local mock server, and the system-native
-backend — are a hard gate: any failure fails the run. **Live** checks — real Edge
+registry, the OpenAI and Azure backends against their local mock servers, and the
+system-native backend — are a hard gate: any failure fails the run. **Live** checks —
+real Edge
 synthesis, `voices --lang zh`, `doctor`, and batch/merge through the Edge backend —
 talk to the live Microsoft endpoint. They are normally required too, but if you set
 `TTS_SMOKE_REQUIRE_LIVE=0` a live-service failure downgrades to a `[warn]` and the
@@ -273,7 +305,8 @@ this turns "a user reports it's broken" into "an issue was filed hours earlier".
 - **`ffmpeg`** — optional, but needed for `batch --merge` (to insert real silence)
   and for the `system` backend (to convert WAV/AIFF to mp3). Without it, merge falls
   back to raw MP3 frame concatenation.
-- The `openai` backend needs nothing beyond the standard library.
+- The `openai` and `azure` backends need nothing beyond the standard library.
+  `azure` additionally needs a Speech key and region.
 
 ## Troubleshooting
 
@@ -290,6 +323,9 @@ python3 scripts/tts.py providers   # just the backend status
 | `--srt` refused | That backend reports no word timings. Use `--provider edge`, or drop `--srt`. |
 | `openai` says no API key | Set `OPENAI_API_KEY`, or pass `--api-key`. Self-hosted servers still usually require *some* value. |
 | `openai` returns HTTP 400 | The server rejected a field. Check `--voice` and `--model` against `voices --provider openai`. |
+| `azure` says no key / no region | Set `AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION`, or pass `--azure-key` / `--azure-region`. |
+| `azure` returns HTTP 401 | Key invalid, or the region does not match the resource. |
+| `azure` returns HTTP 429 | Quota or rate limit hit — check the Speech resource's pricing tier. |
 | `system` backend unavailable on Linux | `apt install espeak-ng`. |
 | `system` backend needs ffmpeg | Install ffmpeg — the OS engines cannot write mp3 directly. |
 | `edge-tts` won't install | Managed/offline environment. Install manually, set `TTS_NO_AUTO_INSTALL=1`, or switch to `--provider system`. |
